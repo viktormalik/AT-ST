@@ -1,0 +1,6 @@
+# IDE files
+.idea
+
+# Build and testing files
+/target
+testing-projects
