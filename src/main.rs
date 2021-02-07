@@ -1,6 +1,6 @@
 use crate::config::Config;
-use crate::modules::{Module, ScriptExec};
-use std::path::PathBuf;
+use crate::modules::*;
+use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 
 mod config;
@@ -18,7 +18,21 @@ struct Project {
 /// One student task that is to be evaluated
 pub struct Solution {
     path: PathBuf,
+    src_file: PathBuf,
+    bin_file: PathBuf,
     score: f64,
+}
+
+impl Solution {
+    pub fn new(path: &Path, config: &Config) -> Self {
+        let src_file = PathBuf::from(config.src_file.as_ref().unwrap());
+        Self {
+            path: path.to_path_buf(),
+            src_file: src_file.clone(),
+            bin_file: PathBuf::from(src_file.file_stem().unwrap()),
+            score: 0.0,
+        }
+    }
 }
 
 fn main() {
@@ -34,15 +48,13 @@ fn main() {
         .filter(|entry| {
             entry.path().is_dir() && entry.file_name().into_string().unwrap().starts_with('x')
         })
-        .map(|entry| Solution {
-            path: entry.path(),
-            score: 0.0,
-        });
+        .map(|entry| Solution::new(&entry.path(), &config));
 
     // Create modules that will be run on each solution
     // For now, only custom scripts are supported
     let mut modules: Vec<Box<dyn Module>> = vec![];
-    for script in config.scripts {
+    modules.push(Box::new(Compiler::new(&config)));
+    for script in &config.scripts {
         modules.push(Box::new(ScriptExec::new(script)));
     }
 
