@@ -18,6 +18,7 @@ struct Project {
 /// One student task that is to be evaluated
 pub struct Solution {
     path: PathBuf,
+    score: f64,
 }
 
 fn main() {
@@ -33,7 +34,10 @@ fn main() {
         .filter(|entry| {
             entry.path().is_dir() && entry.file_name().into_string().unwrap().starts_with('x')
         })
-        .map(|entry| Solution { path: entry.path() });
+        .map(|entry| Solution {
+            path: entry.path(),
+            score: 0.0,
+        });
 
     // Create modules that will be run on each solution
     // For now, only custom scripts are supported
@@ -43,10 +47,11 @@ fn main() {
     }
 
     // Evaluation - run all modules on each solution
-    for solution in solutions {
-        println!("{}", solution.path.file_name().unwrap().to_str().unwrap());
+    for mut solution in solutions {
+        print!("{}: ", solution.path.file_name().unwrap().to_str().unwrap());
         for m in &modules {
-            m.execute(&solution);
+            m.execute(&mut solution);
         }
+        println!("{}", (solution.score * 100.0).round() / 100.0);
     }
 }
