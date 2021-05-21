@@ -11,10 +11,12 @@ use yaml_rust::YamlLoader;
 pub struct Config {
     // Basic information
     pub src_file: Option<String>,
+
     // Compiler information
     pub compiler: Option<String>,
     pub c_flags: Option<String>,
     pub ld_flags: Option<String>,
+
     // Additional scripts to be run
     pub scripts: Vec<PathBuf>,
 }

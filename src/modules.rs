@@ -1,6 +1,8 @@
 use crate::config::Config;
+use crate::test_case::TestCase;
 use crate::Solution;
 use std::fs::{read_to_string, remove_file};
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -46,6 +48,53 @@ impl Module for Compiler {
         cmd.arg("-Werror");
         if !cmd.status().unwrap().success() {
             solution.score -= 0.5;
+        }
+    }
+}
+
+/// Running test cases
+pub struct TestExec {
+    test_cases: Vec<TestCase>,
+}
+
+impl TestExec {
+    pub fn new(tests: Vec<TestCase>) -> Self {
+        Self { test_cases: tests }
+    }
+}
+
+impl Module for TestExec {
+    fn execute(&self, solution: &mut Solution) {
+        // Make sure that the executable exists
+        let prog = solution.path.join(&solution.bin_file);
+        if !prog.exists() {
+            return;
+        }
+
+        for test_case in &self.test_cases {
+            // Create process with correct arguments
+            let mut cmd = Command::new(prog.clone())
+                .args(&test_case.args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+
+            // Pass stdin to the process and capture its output
+            let _ = cmd
+                .stdin
+                .as_mut()
+                .unwrap()
+                .write_all(test_case.stdin.as_bytes());
+            let output = cmd.wait_with_output().unwrap();
+            let stdout = std::str::from_utf8(&output.stdout);
+
+            // Check if stdout matches the expected value
+            // TODO: do not ignore whitespace
+            if stdout.is_ok() && stdout.unwrap().trim() == test_case.stdout.trim() {
+                solution.score += test_case.score;
+            }
         }
     }
 }
