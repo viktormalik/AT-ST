@@ -1,8 +1,9 @@
 use crate::config::Config;
 use crate::test_case::TestCase;
 use crate::Solution;
-use std::fs::{read_to_string, remove_file};
-use std::io::Write;
+use regex::Regex;
+use std::fs::{read_to_string, remove_file, File};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -49,6 +50,62 @@ impl Module for Compiler {
         if !cmd.status().unwrap().success() {
             solution.score -= 0.5;
         }
+    }
+}
+
+/// Parsing the solution source files for later analyses
+/// Currently does 2 things:
+///   1. parses out names of the inlined headers and stores them in solution.included
+///   2. preprocesses the source file (except for the included headers) and stores its contents
+///      in solution.source
+pub struct Parser {}
+
+impl Module for Parser {
+    fn execute(&self, solution: &mut Solution) {
+        // Run dos2unix to unify line endings and other stuff
+        let _ = Command::new("dos2unix")
+            .arg(solution.src_file.to_str().unwrap())
+            .stderr(Stdio::null())
+            .current_dir(&solution.path)
+            .status();
+
+        // Open and read source file (handles also non UTF-8 characters)
+        let mut src = File::open(solution.path.join(&solution.src_file)).unwrap();
+        let mut src_bytes = vec![];
+        let _ = src.read_to_end(&mut src_bytes);
+        let src_lines = String::from_utf8_lossy(&src_bytes);
+
+        // Parse names of included headers
+        let re = Regex::new(r"#include\s*<(.*)>").unwrap();
+        for include in re.captures_iter(&src_lines) {
+            solution.included.push(include[1].to_string());
+        }
+
+        // Preprocess the file (except for the included headers) and store its contents
+        let source_lines = src_lines
+            .lines()
+            .filter(|l| !re.is_match(l))
+            .fold(String::new(), |s, l| s + l + "\n");
+
+        let mut gcc_cmd = Command::new("gcc")
+            .args(&["-E", "-"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+
+        let _ = gcc_cmd
+            .stdin
+            .as_mut()
+            .unwrap()
+            .write_all(source_lines.as_bytes());
+
+        let output = gcc_cmd.wait_with_output().unwrap();
+        solution.source = std::str::from_utf8(&output.stdout)
+            .unwrap()
+            .lines()
+            .filter(|l| !l.starts_with('#'))
+            .fold(String::new(), |s, l| s + l + "\n");
     }
 }
 

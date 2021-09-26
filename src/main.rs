@@ -22,6 +22,10 @@ pub struct Solution {
     path: PathBuf,
     src_file: PathBuf,
     bin_file: PathBuf,
+
+    included: Vec<String>,
+    source: String,
+
     score: f64,
 }
 
@@ -32,6 +36,8 @@ impl Solution {
             path: path.to_path_buf(),
             src_file: src_file.clone(),
             bin_file: PathBuf::from(src_file.file_stem().unwrap()),
+            included: vec![],
+            source: String::new(),
             score: 0.0,
         }
     }
@@ -56,10 +62,12 @@ fn main() {
     // Create modules that will be run on each solution
     // Currently used modules:
     //  - compilation
+    //  - source parsing
     //  - test cases execution
     //  - custom scripts
     let mut modules: Vec<Box<dyn Module>> = vec![];
     modules.push(Box::new(Compiler::new(&config)));
+    modules.push(Box::new(Parser {}));
     modules.push(Box::new(TestExec::new(test_cases)));
     for script in &config.scripts {
         modules.push(Box::new(ScriptExec::new(script)));
