@@ -1,8 +1,9 @@
 use crate::Solution;
-use regex::RegexSet;
+use regex::{Regex, RegexSet};
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::process::Command;
 use yaml_rust::YamlLoader;
 
 /// Source file analysis
@@ -45,6 +46,31 @@ impl Analyser for NoHeaderAnalyser {
     }
 }
 
+/// Check that the program does not use global variables
+/// Uses 'nm' on the object file.
+pub struct NoGlobalsAnalyser {
+    penalty: f64,
+}
+
+impl Analyser for NoGlobalsAnalyser {
+    fn analyse(&self, solution: &Solution) -> bool {
+        let nm_output = Command::new("nm")
+            .arg(&solution.obj_file)
+            .current_dir(&solution.path)
+            .output()
+            .unwrap();
+
+        let symbols = std::str::from_utf8(&nm_output.stdout).unwrap();
+
+        let re = Regex::new(r"\d*\s* [BD] (.*)").unwrap();
+        re.is_match(symbols)
+    }
+
+    fn penalty(&self) -> f64 {
+        self.penalty
+    }
+}
+
 pub fn analyses_from_yaml(yaml_file: &Path) -> Vec<Box<dyn Analyser>> {
     let mut yaml_str = String::new();
     File::open(yaml_file)
@@ -68,10 +94,16 @@ pub fn analyses_from_yaml(yaml_file: &Path) -> Vec<Box<dyn Analyser>> {
                         .collect(),
                     penalty: analysis["penalty"].as_f64().unwrap(),
                 }) as Box<dyn Analyser>),
+
                 Some("no-header") => Some(Box::new(NoHeaderAnalyser {
                     header: analysis["header"].as_str().unwrap().to_string(),
                     penalty: analysis["penalty"].as_f64().unwrap(),
                 }) as Box<dyn Analyser>),
+
+                Some("no-globals") => Some(Box::new(NoGlobalsAnalyser {
+                    penalty: analysis["penalty"].as_f64().unwrap(),
+                }) as Box<dyn Analyser>),
+
                 _ => None,
             })
             .collect(),
