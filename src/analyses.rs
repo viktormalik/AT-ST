@@ -29,6 +29,22 @@ impl Analyser for NoCallAnalyser {
     }
 }
 
+/// Check that the program does not include the given header
+pub struct NoHeaderAnalyser {
+    header: String,
+    penalty: f64,
+}
+
+impl Analyser for NoHeaderAnalyser {
+    fn analyse(&self, solution: &Solution) -> bool {
+        solution.included.contains(&self.header)
+    }
+
+    fn penalty(&self) -> f64 {
+        self.penalty
+    }
+}
+
 pub fn analyses_from_yaml(yaml_file: &Path) -> Vec<Box<dyn Analyser>> {
     let mut yaml_str = String::new();
     File::open(yaml_file)
@@ -50,6 +66,10 @@ pub fn analyses_from_yaml(yaml_file: &Path) -> Vec<Box<dyn Analyser>> {
                         .map(|f| f.as_str().unwrap())
                         .map(str::to_string)
                         .collect(),
+                    penalty: analysis["penalty"].as_f64().unwrap(),
+                }) as Box<dyn Analyser>),
+                Some("no-header") => Some(Box::new(NoHeaderAnalyser {
+                    header: analysis["header"].as_str().unwrap().to_string(),
                     penalty: analysis["penalty"].as_f64().unwrap(),
                 }) as Box<dyn Analyser>),
                 _ => None,
