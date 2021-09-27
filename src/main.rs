@@ -23,6 +23,7 @@ struct Project {
 pub struct Solution {
     path: PathBuf,
     src_file: PathBuf,
+    obj_file: PathBuf,
     bin_file: PathBuf,
 
     included: Vec<String>,
@@ -33,11 +34,12 @@ pub struct Solution {
 
 impl Solution {
     pub fn new(path: &Path, config: &Config) -> Self {
-        let src_file = PathBuf::from(config.src_file.as_ref().unwrap());
+        let src_file = Path::new(config.src_file.as_ref().unwrap());
         Self {
             path: path.to_path_buf(),
-            src_file: src_file.clone(),
+            src_file: src_file.to_path_buf(),
             bin_file: PathBuf::from(src_file.file_stem().unwrap()),
+            obj_file: src_file.with_extension("o"),
             included: vec![],
             source: String::new(),
             score: 0.0,

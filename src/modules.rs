@@ -33,22 +33,39 @@ impl Compiler {
 
 impl Module for Compiler {
     fn execute(&self, solution: &mut Solution) {
+        let _ = remove_file(solution.path.join(&solution.obj_file));
         let _ = remove_file(solution.path.join(&solution.bin_file));
 
-        let mut cmd = Command::new(&self.compiler);
-        cmd.args(self.c_flags.split_whitespace())
-            .args(self.ld_flags.split_whitespace())
-            .args(&["-o", &solution.bin_file.to_str().unwrap()])
+        // Compile .c -> .o
+        let mut cc = Command::new(&self.compiler);
+        cc.args(self.c_flags.split_whitespace())
+            .arg("-c")
+            .args(&["-o", &solution.obj_file.to_str().unwrap()])
             .arg(&solution.src_file)
-            .current_dir(&solution.path);
-        cmd.stderr(Stdio::null());
+            .current_dir(&solution.path)
+            .stderr(Stdio::null());
 
-        if !cmd.status().expect("Error executing GCC").success() {
+        if !cc.status().expect("Error compiling the source").success() {
             return;
         }
+
+        // Link .o -> executable
+        if !Command::new(&self.compiler)
+            .args(self.ld_flags.split_whitespace())
+            .args(&["-o", &solution.bin_file.to_str().unwrap()])
+            .args(&solution.obj_file)
+            .current_dir(&solution.path)
+            .stderr(Stdio::null())
+            .status()
+            .expect("Error linking the source")
+            .success()
+        {
+            return;
+        }
+
         // Compile again with -Werror to see if there are warnings
-        cmd.arg("-Werror");
-        if !cmd.status().unwrap().success() {
+        cc.arg("-Werror");
+        if !cc.status().unwrap().success() {
             solution.score -= 0.5;
         }
     }
