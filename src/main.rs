@@ -1,9 +1,11 @@
+use crate::analyses::analyses_from_yaml;
 use crate::config::Config;
 use crate::modules::*;
 use crate::test_case::*;
 use std::path::{Path, PathBuf};
 use structopt::StructOpt;
 
+mod analyses;
 mod config;
 mod modules;
 mod test_case;
@@ -46,7 +48,8 @@ impl Solution {
 fn main() {
     let project = Project::from_args();
     let config = Config::from_yaml(&project.config_file, &project.path);
-    let test_cases = tests_from_yaml(&project.path.join(project.config_file));
+    let test_cases = tests_from_yaml(&project.path.join(&project.config_file));
+    let analyses = analyses_from_yaml(&project.path.join(&project.config_file));
 
     // Solutions are sub-directories of the student directory starting with 'x'
     let solutions = project
@@ -64,11 +67,13 @@ fn main() {
     //  - compilation
     //  - source parsing
     //  - test cases execution
+    //  - source analyses
     //  - custom scripts
     let mut modules: Vec<Box<dyn Module>> = vec![];
     modules.push(Box::new(Compiler::new(&config)));
     modules.push(Box::new(Parser {}));
     modules.push(Box::new(TestExec::new(test_cases)));
+    modules.push(Box::new(AnalysesExec::new(analyses)));
     for script in &config.scripts {
         modules.push(Box::new(ScriptExec::new(script)));
     }

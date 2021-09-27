@@ -1,3 +1,4 @@
+use crate::analyses::Analyser;
 use crate::config::Config;
 use crate::test_case::TestCase;
 use crate::Solution;
@@ -151,6 +152,27 @@ impl Module for TestExec {
             // TODO: do not ignore whitespace
             if stdout.is_ok() && stdout.unwrap().trim() == test_case.stdout.trim() {
                 solution.score += test_case.score;
+            }
+        }
+    }
+}
+
+/// Running source analyses
+pub struct AnalysesExec {
+    analysers: Vec<Box<dyn Analyser>>,
+}
+
+impl AnalysesExec {
+    pub fn new(analysers: Vec<Box<dyn Analyser>>) -> Self {
+        Self { analysers }
+    }
+}
+
+impl Module for AnalysesExec {
+    fn execute(&self, solution: &mut Solution) {
+        for analysis in &self.analysers {
+            if analysis.analyse(solution) {
+                solution.score += analysis.penalty();
             }
         }
     }
