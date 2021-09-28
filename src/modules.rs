@@ -1,7 +1,7 @@
 use crate::analyses::Analyser;
 use crate::config::Config;
-use crate::test_case::TestCase;
 use crate::Solution;
+use crate::TestCase;
 use regex::Regex;
 use std::fs::{read_to_string, remove_file, File};
 use std::io::{Read, Write};
@@ -128,17 +128,17 @@ impl Module for Parser {
 }
 
 /// Running test cases
-pub struct TestExec {
-    test_cases: Vec<TestCase>,
+pub struct TestExec<'t> {
+    test_cases: &'t Vec<TestCase>,
 }
 
-impl TestExec {
-    pub fn new(tests: Vec<TestCase>) -> Self {
-        Self { test_cases: tests }
+impl<'t> TestExec<'t> {
+    pub fn new(test_cases: &'t Vec<TestCase>) -> Self {
+        Self { test_cases }
     }
 }
 
-impl Module for TestExec {
+impl<'t> Module for TestExec<'t> {
     fn execute(&self, solution: &mut Solution) {
         // Make sure that the executable exists
         let prog = solution.path.join(&solution.bin_file);
@@ -146,7 +146,7 @@ impl Module for TestExec {
             return;
         }
 
-        for test_case in &self.test_cases {
+        for test_case in self.test_cases {
             // Create process with correct arguments
             let mut cmd = Command::new(prog.clone())
                 .args(&test_case.args)
@@ -175,19 +175,19 @@ impl Module for TestExec {
 }
 
 /// Running source analyses
-pub struct AnalysesExec {
-    analysers: Vec<Box<dyn Analyser>>,
+pub struct AnalysesExec<'a> {
+    analysers: &'a Vec<Box<dyn Analyser>>,
 }
 
-impl AnalysesExec {
-    pub fn new(analysers: Vec<Box<dyn Analyser>>) -> Self {
+impl<'a> AnalysesExec<'a> {
+    pub fn new(analysers: &'a Vec<Box<dyn Analyser>>) -> Self {
         Self { analysers }
     }
 }
 
-impl Module for AnalysesExec {
+impl<'a> Module for AnalysesExec<'a> {
     fn execute(&self, solution: &mut Solution) {
-        for analysis in &self.analysers {
+        for analysis in self.analysers {
             if analysis.analyse(solution) {
                 solution.score += analysis.penalty();
             }

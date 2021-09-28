@@ -1,13 +1,10 @@
-use crate::analyses::analyses_from_yaml;
-use crate::config::Config;
-use crate::modules::*;
-use crate::test_case::*;
-use std::path::{Path, PathBuf};
-
 mod analyses;
 mod config;
 mod modules;
-mod test_case;
+
+use config::Config;
+use modules::*;
+use std::path::{Path, PathBuf};
 
 /// One student task that is to be evaluated
 pub struct Solution {
@@ -37,12 +34,20 @@ impl Solution {
     }
 }
 
+/// Single test case for the project
+/// Contains test name, test input (args and stdin), expected output, and test score
+pub struct TestCase {
+    pub name: String,
+    pub score: f64,
+    pub args: Vec<String>,
+    pub stdin: String,
+    pub stdout: String,
+}
+
 /// Main entry point of the program
 /// Runs evaluation of all tests in `path` as defined in `config_file`
 pub fn run(path: &PathBuf, config_file: &PathBuf) {
     let config = Config::from_yaml(&config_file, &path);
-    let test_cases = tests_from_yaml(&path.join(&config_file));
-    let analyses = analyses_from_yaml(&path.join(&config_file));
 
     // Solutions are sub-directories of the student directory starting with 'x'
     let solutions = path
@@ -64,8 +69,8 @@ pub fn run(path: &PathBuf, config_file: &PathBuf) {
     let mut modules: Vec<Box<dyn Module>> = vec![];
     modules.push(Box::new(Compiler::new(&config)));
     modules.push(Box::new(Parser {}));
-    modules.push(Box::new(TestExec::new(test_cases)));
-    modules.push(Box::new(AnalysesExec::new(analyses)));
+    modules.push(Box::new(TestExec::new(&config.test_cases)));
+    modules.push(Box::new(AnalysesExec::new(&config.analyses)));
     for script in &config.scripts {
         modules.push(Box::new(ScriptExec::new(script)));
     }
