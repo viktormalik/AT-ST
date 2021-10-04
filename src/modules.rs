@@ -232,3 +232,146 @@ impl Module for ScriptExec {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::get_solution;
+
+    #[test]
+    fn compiler_module_ok() {
+        let compiler = Compiler {
+            compiler: "gcc".to_string(),
+            c_flags: "-std=c99 -Wall -Wextra".to_string(),
+            ld_flags: String::new(),
+        };
+
+        let src = "int main() {}";
+        let mut solution = get_solution(src, false);
+        compiler.execute(&mut solution);
+
+        assert!(solution.path.join(solution.obj_file).exists());
+        assert!(solution.path.join(solution.bin_file).exists());
+        assert_eq!(solution.score, 0.0);
+    }
+
+    #[test]
+    fn compiler_module_warning() {
+        let compiler = Compiler {
+            compiler: "gcc".to_string(),
+            c_flags: "-std=c99 -Wall -Wextra".to_string(),
+            ld_flags: String::new(),
+        };
+
+        let src = "int main(int argc, char** argv) {}";
+        let mut solution = get_solution(src, false);
+        compiler.execute(&mut solution);
+
+        assert!(solution.path.join(solution.obj_file).exists());
+        assert!(solution.path.join(solution.bin_file).exists());
+        // Compilation with warning should subtract 0.5 pts from score
+        assert_eq!(solution.score, -0.5);
+    }
+
+    #[test]
+    fn compiler_module_err() {
+        let compiler = Compiler {
+            compiler: "gcc".to_string(),
+            c_flags: "-std=c99 -Wall -Wextra".to_string(),
+            ld_flags: String::new(),
+        };
+
+        let src = "int main() { notype x = 0; }";
+        let mut solution = get_solution(src, false);
+        compiler.execute(&mut solution);
+
+        // Build targets should not exist for invalid program
+        assert!(!solution.path.join(solution.obj_file).exists());
+        assert!(!solution.path.join(solution.bin_file).exists());
+        assert_eq!(solution.score, 0.0);
+    }
+
+    #[test]
+    fn parser_module() {
+        let parser = Parser {};
+        let src = "#include <foo.h>
+#define X 5
+int x;
+int main() {
+    x = X;
+}";
+        let mut solution = get_solution(src, false);
+        solution.source = String::new();
+        solution.included = vec![];
+        parser.execute(&mut solution);
+
+        assert_eq!(solution.included, vec!["foo.h"]);
+        assert_eq!(solution.source, "\nint x;\nint main() {\n    x = 5;\n}\n");
+    }
+
+    #[test]
+    fn exec_test_basic() {
+        let tests = vec![TestCase {
+            score: 1.0,
+            stdout: "hello".to_string(),
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               int main() {
+                   printf("hello");
+                }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests);
+        test_exec.execute(&mut solution);
+        assert_eq!(solution.score, 1.0);
+    }
+
+    #[test]
+    fn exec_test_with_arg() {
+        let tests = vec![TestCase {
+            score: 1.0,
+            args: vec!["arg".to_string()],
+            stdout: "hello".to_string(),
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               #include <string.h>
+               int main(int argc, char **argv) {
+                   if (strcmp(argv[1], "arg") == 0)
+                       printf("hello");
+                }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests);
+        test_exec.execute(&mut solution);
+        assert_eq!(solution.score, 1.0);
+    }
+
+    #[test]
+    fn exec_test_with_stdin() {
+        let tests = vec![TestCase {
+            score: 1.0,
+            stdin: "hello".to_string(),
+            stdout: "hello".to_string(),
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               int main() {
+                   char input[6];
+                   scanf("%5s", input);
+                   printf("%s", input);
+                }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests);
+        test_exec.execute(&mut solution);
+        assert_eq!(solution.score, 1.0);
+    }
+}

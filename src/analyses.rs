@@ -84,3 +84,73 @@ impl Analyser for NoGlobalsAnalyser {
         self.penalty
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use crate::test_utils::get_solution;
+
+    fn test_on(analyser: &dyn Analyser, src: &str, included: &Vec<String>, expected: bool) {
+        let mut solution = get_solution(src, true);
+        solution.included = included.clone();
+        assert_eq!(analyser.analyse(&solution), expected);
+    }
+
+    fn test_on_default(analyser: &dyn Analyser, expected: bool) {
+        let src = r#"#include <stdio.h>
+                     int x;
+                     int main() {
+                         printf("foo");
+                     }
+                  "#;
+        test_on(analyser, src, &vec!["stdio.h".to_string()], expected);
+    }
+
+    #[test]
+    fn no_call_analyser_match() {
+        let analyser = NoCallAnalyser {
+            funs: vec!["printf".to_string()],
+            penalty: -1.0,
+        };
+        test_on_default(&analyser, true);
+    }
+
+    #[test]
+    fn no_call_analyser_nomatch() {
+        let analyser = NoCallAnalyser {
+            funs: vec!["foo".to_string()],
+            penalty: -1.0,
+        };
+        test_on_default(&analyser, false);
+    }
+
+    #[test]
+    fn no_header_analyser_match() {
+        let analyser = NoHeaderAnalyser {
+            header: "stdio.h".to_string(),
+            penalty: -1.0,
+        };
+        test_on_default(&analyser, true);
+    }
+
+    #[test]
+    fn no_header_analyser_nomatch() {
+        let analyser = NoHeaderAnalyser {
+            header: "foo.h".to_string(),
+            penalty: -1.0,
+        };
+        test_on_default(&analyser, false);
+    }
+
+    #[test]
+    fn no_globals_analyser_match() {
+        let analyser = NoGlobalsAnalyser { penalty: -1.0 };
+        test_on_default(&analyser, true);
+    }
+
+    #[test]
+    fn no_globals_analyser_nomatch() {
+        let analyser = NoGlobalsAnalyser { penalty: -1.0 };
+        test_on(&analyser, "int main() {}", &vec![], false);
+    }
+}

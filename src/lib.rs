@@ -7,6 +7,7 @@ use modules::*;
 use std::path::{Path, PathBuf};
 
 /// One student task that is to be evaluated
+#[derive(Default)]
 pub struct Solution {
     path: PathBuf,
     src_file: PathBuf,
@@ -36,6 +37,7 @@ impl Solution {
 
 /// Single test case for the project
 /// Contains test name, test input (args and stdin), expected output, and test score
+#[derive(Default)]
 pub struct TestCase {
     pub name: String,
     pub score: f64,
@@ -82,5 +84,58 @@ pub fn run(path: &PathBuf, config_file: &PathBuf) {
             m.execute(&mut solution);
         }
         println!("{}", (solution.score * 100.0).round() / 100.0);
+    }
+}
+
+#[cfg(test)]
+mod test_utils {
+    use super::Solution;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::process::{Command, Stdio};
+
+    /// Create a new solution from the given source for testing purposes
+    ///
+    /// Creates a temporary solution directory DIR and writes `src` to DIR/test.c.
+    /// If `compile` is set, builds the source into an object file (DIR/test.o)
+    /// and an executable (DIR/test).
+    pub fn get_solution(src: &str, compile: bool) -> Solution {
+        let dir = tempfile::tempdir().unwrap();
+
+        let src_file_name = PathBuf::from("test.c");
+        let obj_file_name = PathBuf::from("test.o");
+        let bin_file_name = PathBuf::from("test");
+
+        let mut src_file = File::create(dir.path().join(&src_file_name)).unwrap();
+        let _ = src_file.write(src.as_bytes());
+
+        if compile {
+            let _ = Command::new("gcc")
+                .arg("-c")
+                .arg(&src_file_name)
+                .arg("-o")
+                .arg(&obj_file_name)
+                .current_dir(&dir)
+                .stderr(Stdio::null())
+                .status();
+
+            let _ = Command::new("gcc")
+                .arg(&obj_file_name)
+                .arg("-o")
+                .arg(&bin_file_name)
+                .current_dir(&dir)
+                .stderr(Stdio::null())
+                .status();
+        }
+
+        Solution {
+            path: dir.into_path(),
+            src_file: src_file_name.clone(),
+            obj_file: obj_file_name.clone(),
+            bin_file: bin_file_name.clone(),
+            source: src.to_string(),
+            ..Default::default()
+        }
     }
 }
