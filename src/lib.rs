@@ -51,13 +51,16 @@ pub struct TestCase {
 pub fn run(path: &PathBuf, config_file: &PathBuf) {
     let config = Config::from_yaml(&config_file, &path);
 
-    // Solutions are sub-directories of the student directory starting with 'x'
+    // Solutions are sub-dirs of the project directory except those explicitly excluded
     let solutions = path
         .read_dir()
         .expect("Could not read project directory")
         .filter_map(|res| res.ok())
         .filter(|entry| {
-            entry.path().is_dir() && entry.file_name().into_string().unwrap().starts_with('x')
+            entry.path().is_dir()
+                && !config
+                    .excluded_dirs
+                    .contains(&entry.file_name().into_string().unwrap())
         })
         .map(|entry| Solution::new(&entry.path(), &config));
 

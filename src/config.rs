@@ -15,6 +15,9 @@ use yaml_rust::{Yaml, YamlLoader};
 ///   - list of additional scripts to be run on each solution
 /// Typically parsed from a YAML file
 pub struct Config {
+    // Solutions information
+    pub excluded_dirs: Vec<String>,
+
     // Basic information
     pub src_file: Option<String>,
 
@@ -39,6 +42,10 @@ impl Config {
             .expect("Error parsing configuration file: not a YAML");
 
         Self {
+            excluded_dirs: match yaml[0]["solutions"]["exclude-dirs"].as_vec() {
+                Some(v) => v.iter().map(|s| s.as_str().unwrap().to_string()).collect(),
+                None => vec![],
+            },
             src_file: yaml[0]["source"].as_str().map(String::from),
             compiler: yaml[0]["compiler"]["CC"].as_str().map(String::from),
             c_flags: yaml[0]["compiler"]["CFLAGS"].as_str().map(String::from),
