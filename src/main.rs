@@ -9,9 +9,11 @@ struct Project {
     path: PathBuf,
     #[structopt(parse(from_os_str))]
     config_file: PathBuf,
+    #[structopt(short, long, default_value = "")]
+    solution: String,
 }
 
 fn main() {
     let project = Project::from_args();
-    run(&project.path, &project.config_file)
+    run(&project.path, &project.config_file, &project.solution)
 }

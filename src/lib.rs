@@ -48,21 +48,30 @@ pub struct TestCase {
 
 /// Main entry point of the program
 /// Runs evaluation of all tests in `path` as defined in `config_file`
-pub fn run(path: &PathBuf, config_file: &PathBuf) {
+/// If `solution` is set, only evaluate that solution
+pub fn run(path: &PathBuf, config_file: &PathBuf, only_solution: &str) {
     let config = Config::from_yaml(&config_file, &path);
 
-    // Solutions are sub-dirs of the project directory except those explicitly excluded
-    let solutions = path
-        .read_dir()
-        .expect("Could not read project directory")
-        .filter_map(|res| res.ok())
-        .filter(|entry| {
-            entry.path().is_dir()
-                && !config
-                    .excluded_dirs
-                    .contains(&entry.file_name().into_string().unwrap())
-        })
-        .map(|entry| Solution::new(&entry.path(), &config));
+    let mut solutions = vec![];
+
+    if !only_solution.is_empty() {
+        // Single solution
+        solutions.push(Solution::new(&path.join(only_solution), &config));
+    } else {
+        // Solutions are sub-dirs of the project directory except those explicitly excluded
+        solutions = path
+            .read_dir()
+            .expect("Could not read project directory")
+            .filter_map(|res| res.ok())
+            .filter(|entry| {
+                entry.path().is_dir()
+                    && !config
+                        .excluded_dirs
+                        .contains(&entry.file_name().into_string().unwrap())
+            })
+            .map(|entry| Solution::new(&entry.path(), &config))
+            .collect();
+    }
 
     // Create modules that will be run on each solution
     // Currently used modules:
