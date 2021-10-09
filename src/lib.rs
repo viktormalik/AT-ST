@@ -4,6 +4,7 @@ mod modules;
 
 use config::Config;
 use modules::*;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// One student task that is to be evaluated
@@ -49,7 +50,7 @@ pub struct TestCase {
 /// Main entry point of the program
 /// Runs evaluation of all tests in `path` as defined in `config_file`
 /// If `solution` is set, only evaluate that solution
-pub fn run(path: &PathBuf, config_file: &PathBuf, only_solution: &str) {
+pub fn run(path: &PathBuf, config_file: &PathBuf, only_solution: &str) -> HashMap<String, f64> {
     let config = Config::from_yaml(&config_file, &path);
 
     let mut solutions = vec![];
@@ -89,14 +90,25 @@ pub fn run(path: &PathBuf, config_file: &PathBuf, only_solution: &str) {
         modules.push(Box::new(ScriptExec::new(script)));
     }
 
+    let mut result = HashMap::new();
     // Evaluation - run all modules on each solution
     for mut solution in solutions {
-        print!("{}: ", solution.path.file_name().unwrap().to_str().unwrap());
+        let name = solution
+            .path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        print!("{}: ", name);
         for m in &modules {
             m.execute(&mut solution);
         }
         println!("{}", (solution.score * 100.0).round() / 100.0);
+        result.insert(name.to_string(), solution.score);
     }
+
+    result
 }
 
 #[cfg(test)]

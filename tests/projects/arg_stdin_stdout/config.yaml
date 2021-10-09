@@ -1,0 +1,53 @@
+# Simple C project that reads lines from stdin and prints the first N chars
+# of each line to stdout. N is given as a program argument.
+source: proj.c
+
+compiler:
+  CC: gcc
+  CFLAGS: -std=c99 -Wall -Wextra
+
+analyses:
+  - analyser: no-call
+    funs: [ exit ]
+    penalty: -0.2
+  - analyser: no-header
+    header: string.h
+    penalty: -1.0
+  - analyser: no-globals
+    penalty: -0.1
+
+tests:
+  - name: single line
+    score: 1.0
+    args: "3"
+    stdin: |
+      line
+    stdout: |
+      lin
+
+  - name: multiple lines
+    score: 1.0
+    args: "3"
+    stdin: |
+      file
+      with
+      many
+      lines
+    stdout: |
+      fil
+      wit
+      man
+      lin
+
+  - name: lines with spaces
+    score: 1.0
+    args: "7"
+    stdin: |
+      first line
+      second line
+      third line
+    stdout: |
+      first l
+      second 
+      third l
+

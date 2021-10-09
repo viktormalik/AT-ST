@@ -4,3 +4,5 @@
 # Build and testing files
 /target
 testing-projects
+tests/projects/*/*/*.o
+tests/projects/*/*/[^.]*

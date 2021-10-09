@@ -12,3 +12,6 @@ regex = "*"
 structopt = "*"
 tempfile = "*"
 yaml-rust = "*"
+
+[dev-dependencies]
+test_generator = { path = "tests/test_generator" }

@@ -27,6 +27,7 @@ dependencies = [
  "regex",
  "structopt",
  "tempfile",
+ "test_generator",
  "yaml-rust",
 ]
 
@@ -297,6 +298,13 @@ dependencies = [
  "redox_syscall",
  "remove_dir_all",
  "winapi",
+]
+
+[[package]]
+name = "test_generator"
+version = "0.1.0"
+dependencies = [
+ "syn",
 ]
 
 [[package]]

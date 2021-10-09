@@ -15,5 +15,5 @@ struct Project {
 
 fn main() {
     let project = Project::from_args();
-    run(&project.path, &project.config_file, &project.solution)
+    run(&project.path, &project.config_file, &project.solution);
 }
