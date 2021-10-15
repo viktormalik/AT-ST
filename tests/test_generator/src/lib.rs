@@ -51,8 +51,9 @@ pub fn generate_tests(input: TokenStream) -> TokenStream {
                  let project_path = std::path::PathBuf::from(\"{}\");
                  let config_file = std::path::PathBuf::from(\"config.yaml\");
                  let res = atst::run(&project_path, &config_file, solution);
-                 assert!(res.contains_key(solution));
-                 assert_eq!(*res.get(solution).unwrap(), {});
+                 assert!(res.is_ok());
+                 assert!(res.as_ref().unwrap().contains_key(solution));
+                 assert_eq!(*res.as_ref().unwrap().get(solution).unwrap(), {});
              }}\n",
             score.0,
             score.0,

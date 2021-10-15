@@ -1,4 +1,7 @@
 use atst::run;
+use env_logger::Builder;
+use log::{error, LevelFilter};
+use std::io::Write;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -14,6 +17,17 @@ struct Project {
 }
 
 fn main() {
+    // Initialize logging (warnings + errors)
+    Builder::new()
+        .format(|buf, record| writeln!(buf, "{}: {}", record.level(), record.args()))
+        .filter(None, LevelFilter::Warn)
+        .init();
+
+    // Parse CLI arguments
     let project = Project::from_args();
-    run(&project.path, &project.config_file, &project.solution);
+    // Run the actual analysis
+    if let Err(e) = run(&project.path, &project.config_file, &project.solution) {
+        error!("{}", e);
+        std::process::exit(1);
+    }
 }

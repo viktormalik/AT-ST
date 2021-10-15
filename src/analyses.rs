@@ -2,6 +2,26 @@ use crate::Solution;
 use regex::{Regex, RegexSet};
 use std::process::Command;
 
+/// List of all supported analysers
+pub enum AnalyserKind {
+    NoCall,
+    NoHeader,
+    NoGlobals,
+
+    Unsupported,
+}
+
+impl AnalyserKind {
+    pub fn from(str: &str) -> Self {
+        match str {
+            "no-call" => AnalyserKind::NoCall,
+            "no-header" => AnalyserKind::NoHeader,
+            "no-globals" => AnalyserKind::NoGlobals,
+            _ => AnalyserKind::Unsupported,
+        }
+    }
+}
+
 /// Source file analysis
 /// If analyse() returns true, penalty() will be added to the solution score
 pub trait Analyser {

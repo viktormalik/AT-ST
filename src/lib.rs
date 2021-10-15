@@ -5,6 +5,7 @@ mod modules;
 use config::Config;
 use modules::*;
 use std::collections::HashMap;
+use std::error::Error;
 use std::path::{Path, PathBuf};
 
 /// One student task that is to be evaluated
@@ -23,7 +24,7 @@ pub struct Solution {
 
 impl Solution {
     pub fn new(path: &Path, config: &Config) -> Self {
-        let src_file = Path::new(config.src_file.as_ref().unwrap());
+        let src_file = Path::new(&config.src_file);
         Self {
             path: path.to_path_buf(),
             src_file: src_file.to_path_buf(),
@@ -43,15 +44,19 @@ pub struct TestCase {
     pub name: String,
     pub score: f64,
     pub args: Vec<String>,
-    pub stdin: String,
-    pub stdout: String,
+    pub stdin: Option<String>,
+    pub stdout: Option<String>,
 }
 
 /// Main entry point of the program
 /// Runs evaluation of all tests in `path` as defined in `config_file`
 /// If `solution` is set, only evaluate that solution
-pub fn run(path: &PathBuf, config_file: &PathBuf, only_solution: &str) -> HashMap<String, f64> {
-    let config = Config::from_yaml(&config_file, &path);
+pub fn run(
+    path: &PathBuf,
+    config_file: &PathBuf,
+    only_solution: &str,
+) -> Result<HashMap<String, f64>, Box<dyn Error>> {
+    let config = Config::from_yaml(&config_file, &path)?;
 
     let mut solutions = vec![];
 
@@ -108,7 +113,7 @@ pub fn run(path: &PathBuf, config_file: &PathBuf, only_solution: &str) -> HashMa
         result.insert(name.to_string(), solution.score);
     }
 
-    result
+    Ok(result)
 }
 
 #[cfg(test)]

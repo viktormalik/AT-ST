@@ -156,18 +156,21 @@ impl<'t> Module for TestExec<'t> {
                 .spawn()
                 .unwrap();
 
-            // Pass stdin to the process and capture its output
-            let _ = cmd
-                .stdin
-                .as_mut()
-                .unwrap()
-                .write_all(test_case.stdin.as_bytes());
+            if test_case.stdin.is_some() {
+                // Pass stdin to the process and capture its output
+                let _ = cmd
+                    .stdin
+                    .as_mut()
+                    .unwrap()
+                    .write_all(test_case.stdin.as_ref().unwrap().as_bytes());
+            }
             let output = cmd.wait_with_output().unwrap();
             let stdout = std::str::from_utf8(&output.stdout);
 
             // Check if stdout matches the expected value
             // TODO: do not ignore whitespace
-            if stdout.is_ok() && stdout.unwrap().trim() == test_case.stdout.trim() {
+            if stdout.is_ok() && stdout.unwrap().trim() == test_case.stdout.as_ref().unwrap().trim()
+            {
                 solution.score += test_case.score;
             }
         }
@@ -313,7 +316,7 @@ int main() {
     fn exec_test_basic() {
         let tests = vec![TestCase {
             score: 1.0,
-            stdout: "hello".to_string(),
+            stdout: Some("hello".to_string()),
             ..Default::default()
         }];
         let mut solution = get_solution(
@@ -334,7 +337,7 @@ int main() {
         let tests = vec![TestCase {
             score: 1.0,
             args: vec!["arg".to_string()],
-            stdout: "hello".to_string(),
+            stdout: Some("hello".to_string()),
             ..Default::default()
         }];
         let mut solution = get_solution(
@@ -356,8 +359,8 @@ int main() {
     fn exec_test_with_stdin() {
         let tests = vec![TestCase {
             score: 1.0,
-            stdin: "hello".to_string(),
-            stdout: "hello".to_string(),
+            stdin: Some("hello".to_string()),
+            stdout: Some("hello".to_string()),
             ..Default::default()
         }];
         let mut solution = get_solution(
