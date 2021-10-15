@@ -13,6 +13,7 @@ log = "*"
 regex = "*"
 structopt = "*"
 tempfile = "*"
+thiserror = "*"
 yaml-rust = "*"
 
 [dev-dependencies]

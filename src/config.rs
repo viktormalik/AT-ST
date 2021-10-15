@@ -3,11 +3,10 @@ extern crate yaml_rust;
 use crate::analyses::*;
 use crate::TestCase;
 use log::warn;
-use std::error::Error;
-use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 use yaml_rust::{Yaml, YamlLoader};
 
 /// Project configuration
@@ -35,61 +34,60 @@ pub struct Config {
     pub scripts: Vec<PathBuf>,
 }
 
-/// Configuration error
-#[derive(Debug)]
-pub struct ConfigError {
-    msg: String,
+/// Configuration errors
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("invalid format (should be a YAML dictionary)")]
+    InvalidFormat,
+    #[error("'{option}' has invalid value ({expected_type} expected)")]
+    InvalidOption {
+        option: String,
+        expected_type: String,
+    },
+    #[error("'{option}' has invalid value of field '{field}' ({expected_type} expected)")]
+    InvalidField {
+        option: String,
+        field: String,
+        expected_type: String,
+    },
+    #[error("'{option}' is missing a mandatory field '{field}'")]
+    MissingField { option: String, field: String },
+    #[error("config file error: {source}")]
+    BadFile {
+        #[from]
+        source: std::io::Error,
+    },
+    #[error("config parsing error: {source}")]
+    InvalidYaml {
+        #[from]
+        source: yaml_rust::ScanError,
+    },
 }
 
-impl ConfigError {
-    fn new(msg: &str) -> Self {
-        Self {
-            msg: msg.to_string(),
+/// Macro for compact error generation
+macro_rules! make_error {
+    ( $kind:ident, $( $param:ident: $val: expr ),* ) => {
+        ConfigError::$kind {
+            $(
+                $param: $val.to_string(),
+            )*
         }
-    }
-
-    fn invalid_field(component: &str, field: &str, expected_type: &str) -> Self {
-        Self {
-            msg: format!(
-                "\'{}\' has invalid value of field \'{}\' ({} expected)",
-                component, field, expected_type
-            ),
-        }
-    }
-
-    fn missing_field(component: &str, field: &str) -> Self {
-        Self {
-            msg: format!(
-                "\'{}\' is missing a mandatory field \'{}\'",
-                component, field
-            ),
-        }
-    }
-}
-
-impl Error for ConfigError {}
-
-impl fmt::Display for ConfigError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Invalid configuration: {}", self.msg)
-    }
+    };
 }
 
 impl Config {
-    pub fn from_yaml(yaml_file: &Path, project_path: &Path) -> Result<Self, Box<dyn Error>> {
+    pub fn from_yaml(yaml_file: &Path, project_path: &Path) -> Result<Self, ConfigError> {
         let mut yaml_str = String::new();
         File::open(project_path.join(yaml_file))?.read_to_string(&mut yaml_str)?;
         let yaml = YamlLoader::load_from_str(&yaml_str)?;
+
+        let config_options = yaml[0].as_hash().ok_or(ConfigError::InvalidFormat)?;
 
         let mut result = Config {
             // Set mandatory fields here
             src_file: mandatory_field_str(&yaml[0], "config", "source")?,
             ..Default::default()
         };
-
-        let config_options = yaml[0]
-            .as_hash()
-            .ok_or(ConfigError::new("top level entry is not a YAML dict"))?;
 
         for (key, val) in config_options.iter() {
             match key.as_str() {
@@ -200,9 +198,7 @@ fn analyses_from_yaml(yaml: &Yaml) -> Result<Vec<Box<dyn Analyser>>, ConfigError
 fn check_fields(yaml: &Yaml, name: &str, fields: &Vec<&str>) -> Result<(), ConfigError> {
     for field in yaml
         .as_hash()
-        .ok_or(ConfigError::new(
-            format!("\'{}\' has incorrect format", name).as_str(),
-        ))?
+        .ok_or(make_error!(InvalidOption, option: name, expected_type: "dictionary"))?
         .keys()
     {
         let field_name = field.as_str().unwrap_or_default();
@@ -231,18 +227,17 @@ fn check_analysis_fields(yaml: &Yaml, name: &str, fields: &Vec<&str>) -> Result<
 fn optional_field_f64(yaml: &Yaml, name: &str, field: &str) -> Result<Option<f64>, ConfigError> {
     match &yaml[field] {
         Yaml::BadValue => Ok(None),
-        val => Ok(Some(val.as_f64().ok_or(ConfigError::invalid_field(
-            name,
-            field,
-            "float number",
-        ))?)),
+        val => Ok(Some(val.as_f64().ok_or(
+            make_error!(InvalidField, option: name, field: field, expected_type: "float number"),
+        )?)),
     }
 }
 
 /// Parse `field` from `yaml` as a f64 number.
 /// Yields `ConfigError` if `yaml` does not contain `field` or its value is not a f64.
 fn mandatory_field_f64(yaml: &Yaml, name: &str, field: &str) -> Result<f64, ConfigError> {
-    optional_field_f64(yaml, name, field)?.ok_or_else(|| ConfigError::missing_field(name, field))
+    optional_field_f64(yaml, name, field)?
+        .ok_or_else(|| make_error!(MissingField, option: name, field: field))
 }
 
 /// Parse `field` from `yaml` as a string.
@@ -251,18 +246,17 @@ fn mandatory_field_f64(yaml: &Yaml, name: &str, field: &str) -> Result<f64, Conf
 fn optional_field_str(yaml: &Yaml, name: &str, field: &str) -> Result<Option<String>, ConfigError> {
     match &yaml[field] {
         Yaml::BadValue => Ok(None),
-        val => {
-            Ok(Some(val.as_str().map(String::from).ok_or(
-                ConfigError::invalid_field(name, field, "string"),
-            )?))
-        }
+        val => Ok(Some(val.as_str().map(String::from).ok_or(
+            make_error!(InvalidField, option: name, field: field, expected_type: "string"),
+        )?)),
     }
 }
 
 /// Parse `field` from `yaml` as a string.
 /// Yields `ConfigError` if `yaml` does not contain `field` or its value is not a string.
 fn mandatory_field_str(yaml: &Yaml, name: &str, field: &str) -> Result<String, ConfigError> {
-    optional_field_str(yaml, name, field)?.ok_or_else(|| ConfigError::missing_field(name, field))
+    optional_field_str(yaml, name, field)?
+        .ok_or_else(|| make_error!(MissingField, option: name, field: field))
 }
 
 /// Parse `field` from `yaml` as a vector of strings.
@@ -277,12 +271,18 @@ fn optional_field_vec_str(
         Yaml::BadValue => Ok(None),
         val => Ok(Some(
             val.as_vec()
-                .ok_or(ConfigError::invalid_field(name, field, "list of strings"))?
+                .ok_or(make_error!(
+                    InvalidField,
+                    option: name,
+                    field: field,
+                    expected_type: "list of strings"))?
                 .iter()
                 .map(|s| {
-                    s.as_str()
-                        .map(String::from)
-                        .ok_or(ConfigError::invalid_field(name, field, "list of strings"))
+                    s.as_str().map(String::from).ok_or(make_error!(
+                            InvalidField,
+                            option: name,
+                            field: field,
+                            expected_type: "list of strings"))
                 })
                 .collect::<Result<Vec<String>, ConfigError>>()?,
         )),
@@ -298,5 +298,5 @@ fn mandatory_field_vec_str(
     field: &str,
 ) -> Result<Vec<String>, ConfigError> {
     optional_field_vec_str(yaml, name, field)?
-        .ok_or_else(|| ConfigError::missing_field(name, field))
+        .ok_or_else(|| make_error!(MissingField, option: name, field: field))
 }
