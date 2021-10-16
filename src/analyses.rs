@@ -1,4 +1,4 @@
-use crate::Solution;
+use crate::{AtstError, Solution};
 use regex::{Regex, RegexSet};
 use std::process::Command;
 
@@ -25,7 +25,7 @@ impl AnalyserKind {
 /// Source file analysis
 /// If analyse() returns true, penalty() will be added to the solution score
 pub trait Analyser {
-    fn analyse(&self, solution: &Solution) -> bool;
+    fn analyse(&self, solution: &Solution) -> Result<bool, AtstError>;
     fn penalty(&self) -> f64;
 }
 
@@ -42,9 +42,13 @@ impl NoCallAnalyser {
 }
 
 impl Analyser for NoCallAnalyser {
-    fn analyse(&self, solution: &Solution) -> bool {
-        let re = RegexSet::new(self.funs.iter().map(|f| format!(r"{}\s*\(", f))).unwrap();
-        re.is_match(&solution.source)
+    fn analyse(&self, solution: &Solution) -> Result<bool, AtstError> {
+        let re = RegexSet::new(self.funs.iter().map(|f| format!(r"{}\s*\(", f))).map_err(|_| {
+            AtstError::InternalError {
+                msg: "no-call analyser regex error".to_string(),
+            }
+        })?;
+        Ok(re.is_match(&solution.source))
     }
 
     fn penalty(&self) -> f64 {
@@ -65,8 +69,8 @@ impl NoHeaderAnalyser {
 }
 
 impl Analyser for NoHeaderAnalyser {
-    fn analyse(&self, solution: &Solution) -> bool {
-        solution.included.contains(&self.header)
+    fn analyse(&self, solution: &Solution) -> Result<bool, AtstError> {
+        Ok(solution.included.contains(&self.header))
     }
 
     fn penalty(&self) -> f64 {
@@ -87,17 +91,22 @@ impl NoGlobalsAnalyser {
 }
 
 impl Analyser for NoGlobalsAnalyser {
-    fn analyse(&self, solution: &Solution) -> bool {
+    fn analyse(&self, solution: &Solution) -> Result<bool, AtstError> {
         let nm_output = Command::new("nm")
             .arg(&solution.obj_file)
             .current_dir(&solution.path)
             .output()
-            .unwrap();
+            .map_err(|_| AtstError::ExecError("nm".to_string()))?;
 
-        let symbols = std::str::from_utf8(&nm_output.stdout).unwrap();
+        let symbols =
+            std::str::from_utf8(&nm_output.stdout).map_err(|_| AtstError::InternalError {
+                msg: "invalid output of nm".to_string(),
+            })?;
 
-        let re = Regex::new(r"\d*\s* [BD] (.*)").unwrap();
-        re.is_match(symbols)
+        let re = Regex::new(r"\d*\s* [BD] (.*)").map_err(|_| AtstError::InternalError {
+            msg: "no-globals analyser regex error".to_string(),
+        })?;
+        Ok(re.is_match(symbols))
     }
 
     fn penalty(&self) -> f64 {
@@ -113,7 +122,9 @@ pub mod tests {
     fn test_on(analyser: &dyn Analyser, src: &str, included: &Vec<String>, expected: bool) {
         let mut solution = get_solution(src, true);
         solution.included = included.clone();
-        assert_eq!(analyser.analyse(&solution), expected);
+        let res = analyser.analyse(&solution);
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), expected);
     }
 
     fn test_on_default(analyser: &dyn Analyser, expected: bool) {

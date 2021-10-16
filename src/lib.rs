@@ -3,10 +3,11 @@ mod config;
 mod modules;
 
 use config::Config;
+use log::warn;
 use modules::*;
 use std::collections::HashMap;
-use std::error::Error;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 
 /// One student task that is to be evaluated
 #[derive(Default)]
@@ -48,6 +49,19 @@ pub struct TestCase {
     pub stdout: Option<String>,
 }
 
+#[derive(Error, Debug)]
+pub enum AtstError {
+    #[error("Configuration error: {source}")]
+    ConfigError {
+        #[from]
+        source: config::ConfigError,
+    },
+    #[error("error executing '{0}' (not installed?)")]
+    ExecError(String),
+    #[error("Internal error: {msg}")]
+    InternalError { msg: String },
+}
+
 /// Main entry point of the program
 /// Runs evaluation of all tests in `path` as defined in `config_file`
 /// If `solution` is set, only evaluate that solution
@@ -55,19 +69,26 @@ pub fn run(
     path: &PathBuf,
     config_file: &PathBuf,
     only_solution: &str,
-) -> Result<HashMap<String, f64>, Box<dyn Error>> {
+) -> Result<HashMap<String, f64>, AtstError> {
     let config = Config::from_yaml(&config_file, &path)?;
 
     let mut solutions = vec![];
 
     if !only_solution.is_empty() {
         // Single solution
-        solutions.push(Solution::new(&path.join(only_solution), &config));
+        let s = Solution::new(&path.join(only_solution), &config);
+        if s.path.exists() {
+            solutions.push(s);
+        } else {
+            warn!("Selected solution does not exist");
+        }
     } else {
         // Solutions are sub-dirs of the project directory except those explicitly excluded
         solutions = path
             .read_dir()
-            .expect("Could not read project directory")
+            .map_err(|_| AtstError::InternalError {
+                msg: "could not read project directory".to_string(),
+            })?
             .filter_map(|res| res.ok())
             .filter(|entry| {
                 entry.path().is_dir()
@@ -77,6 +98,11 @@ pub fn run(
             })
             .map(|entry| Solution::new(&entry.path(), &config))
             .collect();
+    }
+
+    if solutions.is_empty() {
+        warn!("No solutions to analyse");
+        return Ok(HashMap::new());
     }
 
     // Create modules that will be run on each solution
@@ -106,8 +132,15 @@ pub fn run(
             .unwrap()
             .to_string();
         print!("{}: ", name);
+
+        let src_file = &solution.path.join(&solution.src_file);
+        if !src_file.exists() {
+            println!("no source found");
+            continue;
+        }
+
         for m in &modules {
-            m.execute(&mut solution);
+            m.execute(&mut solution)?;
         }
         println!("{}", (solution.score * 100.0).round() / 100.0);
         result.insert(name.to_string(), solution.score);

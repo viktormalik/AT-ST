@@ -57,7 +57,7 @@ pub enum ConfigError {
         #[from]
         source: std::io::Error,
     },
-    #[error("config parsing error: {source}")]
+    #[error("parsing error: {source}")]
     InvalidYaml {
         #[from]
         source: yaml_rust::ScanError,

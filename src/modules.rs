@@ -1,7 +1,7 @@
 use crate::analyses::Analyser;
 use crate::config::Config;
-use crate::Solution;
 use crate::TestCase;
+use crate::{AtstError, Solution};
 use regex::Regex;
 use std::fs::{read_to_string, remove_file, File};
 use std::io::{Read, Write};
@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 /// Modules are used to prepare or evaluate individual project solutions
 /// This trait is used to execute each module on a solution
 pub trait Module {
-    fn execute(&self, solution: &mut Solution);
+    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError>;
 }
 
 /// C compiler
@@ -32,7 +32,7 @@ impl Compiler {
 }
 
 impl Module for Compiler {
-    fn execute(&self, solution: &mut Solution) {
+    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
         let _ = remove_file(solution.path.join(&solution.obj_file));
         let _ = remove_file(solution.path.join(&solution.bin_file));
 
@@ -45,8 +45,12 @@ impl Module for Compiler {
             .current_dir(&solution.path)
             .stderr(Stdio::null());
 
-        if !cc.status().expect("Error compiling the source").success() {
-            return;
+        if !cc
+            .status()
+            .map_err(|_| AtstError::ExecError(self.compiler.clone()))?
+            .success()
+        {
+            return Ok(());
         }
 
         // Link .o -> executable
@@ -57,10 +61,10 @@ impl Module for Compiler {
             .current_dir(&solution.path)
             .stderr(Stdio::null())
             .status()
-            .expect("Error linking the source")
+            .map_err(|_| AtstError::ExecError(self.compiler.to_string()))?
             .success()
         {
-            return;
+            return Ok(());
         }
 
         // Compile again with -Werror to see if there are warnings
@@ -68,6 +72,7 @@ impl Module for Compiler {
         if !cc.status().unwrap().success() {
             solution.score -= 0.5;
         }
+        Ok(())
     }
 }
 
@@ -79,22 +84,29 @@ impl Module for Compiler {
 pub struct Parser {}
 
 impl Module for Parser {
-    fn execute(&self, solution: &mut Solution) {
+    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
         // Run dos2unix to unify line endings and other stuff
         let _ = Command::new("dos2unix")
             .arg(solution.src_file.to_str().unwrap())
             .stderr(Stdio::null())
             .current_dir(&solution.path)
-            .status();
+            .status()
+            .map_err(|_| AtstError::ExecError("dos2unix".to_string()))?;
 
         // Open and read source file (handles also non UTF-8 characters)
-        let mut src = File::open(solution.path.join(&solution.src_file)).unwrap();
+        let src = File::open(solution.path.join(&solution.src_file));
+        if src.is_err() {
+            return Ok(());
+        }
+
         let mut src_bytes = vec![];
-        let _ = src.read_to_end(&mut src_bytes);
+        let _ = src.unwrap().read_to_end(&mut src_bytes);
         let src_lines = String::from_utf8_lossy(&src_bytes);
 
         // Parse names of included headers
-        let re = Regex::new(r"#include\s*<(.*)>").unwrap();
+        let re = Regex::new(r"#include\s*<(.*)>").map_err(|_| AtstError::InternalError {
+            msg: "source parser regex error".to_string(),
+        })?;
         for include in re.captures_iter(&src_lines) {
             solution.included.push(include[1].to_string());
         }
@@ -110,20 +122,29 @@ impl Module for Parser {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
-            .unwrap();
+            .map_err(|_| AtstError::ExecError("gcc".to_string()))?;
 
         let _ = gcc_cmd
             .stdin
             .as_mut()
-            .unwrap()
+            .ok_or(AtstError::InternalError {
+                msg: "preprocessor error".to_string(),
+            })?
             .write_all(source_lines.as_bytes());
 
-        let output = gcc_cmd.wait_with_output().unwrap();
+        let output = gcc_cmd
+            .wait_with_output()
+            .map_err(|_| AtstError::InternalError {
+                msg: "preprocessor error".to_string(),
+            })?;
         solution.source = std::str::from_utf8(&output.stdout)
-            .unwrap()
+            .map_err(|_| AtstError::InternalError {
+                msg: "invalid preprocessor output".to_string(),
+            })?
             .lines()
             .filter(|l| !l.starts_with('#'))
             .fold(String::new(), |s, l| s + l + "\n");
+        Ok(())
     }
 }
 
@@ -139,11 +160,11 @@ impl<'t> TestExec<'t> {
 }
 
 impl<'t> Module for TestExec<'t> {
-    fn execute(&self, solution: &mut Solution) {
+    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
         // Make sure that the executable exists
         let prog = solution.path.join(&solution.bin_file);
         if !prog.exists() {
-            return;
+            return Ok(());
         }
 
         for test_case in self.test_cases {
@@ -154,26 +175,38 @@ impl<'t> Module for TestExec<'t> {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
-                .unwrap();
+                .map_err(|_| AtstError::InternalError {
+                    msg: "could not execute solution".to_string(),
+                })?;
 
             if test_case.stdin.is_some() {
                 // Pass stdin to the process and capture its output
                 let _ = cmd
                     .stdin
                     .as_mut()
-                    .unwrap()
+                    .ok_or(AtstError::InternalError {
+                        msg: "error getting stdin of a solution program".to_string(),
+                    })?
                     .write_all(test_case.stdin.as_ref().unwrap().as_bytes());
             }
-            let output = cmd.wait_with_output().unwrap();
+            let output = cmd
+                .wait_with_output()
+                .map_err(|_| AtstError::InternalError {
+                    msg: "could not execute solution".to_string(),
+                })?;
             let stdout = std::str::from_utf8(&output.stdout);
 
             // Check if stdout matches the expected value
             // TODO: do not ignore whitespace
-            if stdout.is_ok() && stdout.unwrap().trim() == test_case.stdout.as_ref().unwrap().trim()
-            {
-                solution.score += test_case.score;
+            if test_case.stdout.is_some() {
+                if stdout.is_ok()
+                    && stdout.unwrap().trim() == test_case.stdout.as_ref().unwrap().trim()
+                {
+                    solution.score += test_case.score;
+                }
             }
         }
+        Ok(())
     }
 }
 
@@ -189,12 +222,13 @@ impl<'a> AnalysesExec<'a> {
 }
 
 impl<'a> Module for AnalysesExec<'a> {
-    fn execute(&self, solution: &mut Solution) {
+    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
         for analysis in self.analysers {
-            if analysis.analyse(solution) {
+            if analysis.analyse(solution)? {
                 solution.score += analysis.penalty();
             }
         }
+        Ok(())
     }
 }
 
@@ -216,14 +250,15 @@ impl Module for ScriptExec {
     /// Just run the script inside the solution directory.
     /// If the script produces a log file (expected format: <script-name>.log), read it and for all
     /// lines starting with <number>:, add <number> to the total score of the solution.
-    fn execute(&self, solution: &mut Solution) {
+    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
         let script_name = self.script_path.file_name().unwrap().to_str().unwrap();
 
         let script = self.script_path.canonicalize().unwrap();
+        let script_path = script.to_str().unwrap().to_string();
         Command::new(script)
             .current_dir(&solution.path)
             .status()
-            .expect("Failed to execute script");
+            .map_err(|_| AtstError::ExecError(script_path))?;
 
         // Read the log file, if one is produced
         let log_file = solution.path.join(format!("{}.log", script_name));
@@ -233,6 +268,7 @@ impl Module for ScriptExec {
                 _ => {}
             }
         }
+        Ok(())
     }
 }
 
@@ -251,7 +287,9 @@ mod tests {
 
         let src = "int main() {}";
         let mut solution = get_solution(src, false);
-        compiler.execute(&mut solution);
+
+        let res = compiler.execute(&mut solution);
+        assert!(res.is_ok());
 
         assert!(solution.path.join(solution.obj_file).exists());
         assert!(solution.path.join(solution.bin_file).exists());
@@ -268,7 +306,9 @@ mod tests {
 
         let src = "int main(int argc, char** argv) {}";
         let mut solution = get_solution(src, false);
-        compiler.execute(&mut solution);
+
+        let res = compiler.execute(&mut solution);
+        assert!(res.is_ok());
 
         assert!(solution.path.join(solution.obj_file).exists());
         assert!(solution.path.join(solution.bin_file).exists());
@@ -286,7 +326,9 @@ mod tests {
 
         let src = "int main() { notype x = 0; }";
         let mut solution = get_solution(src, false);
-        compiler.execute(&mut solution);
+
+        let res = compiler.execute(&mut solution);
+        assert!(res.is_ok());
 
         // Build targets should not exist for invalid program
         assert!(!solution.path.join(solution.obj_file).exists());
@@ -306,8 +348,9 @@ int main() {
         let mut solution = get_solution(src, false);
         solution.source = String::new();
         solution.included = vec![];
-        parser.execute(&mut solution);
 
+        let res = parser.execute(&mut solution);
+        assert!(res.is_ok());
         assert_eq!(solution.included, vec!["foo.h"]);
         assert_eq!(solution.source, "\nint x;\nint main() {\n    x = 5;\n}\n");
     }
@@ -328,7 +371,8 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests);
-        test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
     }
 
@@ -351,7 +395,8 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests);
-        test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
     }
 
@@ -374,7 +419,8 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests);
-        test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
     }
 }
