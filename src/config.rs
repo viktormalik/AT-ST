@@ -300,3 +300,237 @@ fn mandatory_field_vec_str(
     optional_field_vec_str(yaml, name, field)?
         .ok_or_else(|| make_error!(MissingField, option: name, field: field))
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn parse_mandatory_str_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: value }").unwrap();
+        let f = mandatory_field_str(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), "value");
+    }
+
+    #[test]
+    fn parse_mandatory_str_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: value }").unwrap();
+        let err = mandatory_field_str(&yaml[0]["option"], "option", "other_field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::MissingField { .. }));
+    }
+
+    #[test]
+    fn parse_mandatory_str_invalid() {
+        let yaml = YamlLoader::load_from_str("option: { field: 123 }").unwrap();
+        let err = mandatory_field_str(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn parse_optional_str_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: value }").unwrap();
+        let f = optional_field_str(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert!(f.as_ref().unwrap().is_some());
+        assert_eq!(f.unwrap().unwrap(), "value");
+    }
+
+    #[test]
+    fn parse_optional_str_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: value }").unwrap();
+        let f = optional_field_str(&yaml[0]["option"], "option", "other_field");
+        assert!(f.is_ok());
+        assert!(f.unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_optional_str_invalid() {
+        let yaml = YamlLoader::load_from_str("option: { field: 123 }").unwrap();
+        let err = mandatory_field_str(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn parse_mandatory_f64_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1.0 }").unwrap();
+        let f = mandatory_field_f64(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), 1.0);
+    }
+
+    #[test]
+    fn parse_mandatory_f64_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1.0 }").unwrap();
+        let err = mandatory_field_f64(&yaml[0]["option"], "option", "other_field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::MissingField { .. }));
+    }
+
+    #[test]
+    fn parse_mandatory_f64_invalid() {
+        let yaml = YamlLoader::load_from_str("option: { field: string }").unwrap();
+        let err = mandatory_field_f64(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn parse_optional_f64_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1.0 }").unwrap();
+        let f = optional_field_f64(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert!(f.as_ref().unwrap().is_some());
+        assert_eq!(f.unwrap().unwrap(), 1.0);
+    }
+
+    #[test]
+    fn parse_optional_f64_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1.0 }").unwrap();
+        let f = optional_field_f64(&yaml[0]["option"], "option", "other_field");
+        assert!(f.is_ok());
+        assert!(f.unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_optional_f64_invalid() {
+        let yaml = YamlLoader::load_from_str("option: { field: string }").unwrap();
+        let err = mandatory_field_f64(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn parse_mandatory_vec_str_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: [ value1, value2 ] }").unwrap();
+        let f = mandatory_field_vec_str(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), vec!["value1", "value2"]);
+    }
+
+    #[test]
+    fn parse_mandatory_vec_str_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: [ value1, value2 ] }").unwrap();
+        let err = mandatory_field_vec_str(&yaml[0]["option"], "option", "other_field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::MissingField { .. }));
+    }
+
+    #[test]
+    fn parse_mandatory_vec_str_invalid() {
+        let yaml = YamlLoader::load_from_str("option: { field: value }").unwrap();
+        let err = mandatory_field_vec_str(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn parse_optional_vec_str_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: [ value1, value2 ] }").unwrap();
+        let f = optional_field_vec_str(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert!(f.as_ref().unwrap().is_some());
+        assert_eq!(f.unwrap().unwrap(), vec!["value1", "value2"]);
+    }
+
+    #[test]
+    fn parse_optional_vec_str_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: [ value1, value2 ] }").unwrap();
+        let f = optional_field_vec_str(&yaml[0]["option"], "option", "other_field");
+        assert!(f.is_ok());
+        assert!(f.unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_optional_vec_str_invalid() {
+        let yaml = YamlLoader::load_from_str("option: { field: value }").unwrap();
+        let err = mandatory_field_vec_str(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn check_fields_ok() {
+        let yaml = YamlLoader::load_from_str("{ field1: val1, field2: val2 }").unwrap();
+        let res = check_fields(&yaml[0], "", &vec!["field1", "field2"]);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn tests_from_yaml_ok() {
+        let yaml = YamlLoader::load_from_str(
+            "
+- name: test
+  score: 1.0
+  args: -Wall -Wextra
+  stdin: input
+  stdout: output",
+        )
+        .unwrap();
+        let res = tests_from_yaml(&yaml[0]);
+        assert!(res.is_ok());
+        let tests = res.unwrap();
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].name, "test");
+        assert_eq!(tests[0].score, 1.0);
+        assert_eq!(tests[0].args, vec!["-Wall", "-Wextra"]);
+        assert_eq!(tests[0].stdin, Some("input".to_string()));
+        assert_eq!(tests[0].stdout, Some("output".to_string()));
+    }
+
+    #[test]
+    fn tests_from_yaml_incomplete() {
+        let yaml = YamlLoader::load_from_str("[{ score: 1.0 }]").unwrap();
+        let res = tests_from_yaml(&yaml[0]);
+        assert!(res.is_ok());
+        let tests = res.unwrap();
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].name, "");
+        assert_eq!(tests[0].score, 1.0);
+        assert!(tests[0].args.is_empty());
+        assert!(tests[0].stdin.is_none());
+        assert!(tests[0].stdout.is_none());
+    }
+
+    #[test]
+    fn tests_from_yaml_missing_field() {
+        let yaml = YamlLoader::load_from_str("[{ name: test }]").unwrap();
+        let res = tests_from_yaml(&yaml[0]);
+        assert!(res.is_err());
+        assert!(matches!(res, Err(ConfigError::MissingField { .. })));
+    }
+
+    #[test]
+    fn analyses_from_yaml_ok() {
+        let yaml = YamlLoader::load_from_str(
+            "
+- analyser: no-call
+  funs: [ f1, f2]
+  penalty: -1.0
+- analyser: no-header
+  header: header.h
+  penalty: -0.5
+- analyser: no-globals
+  penalty: -2.0",
+        )
+        .unwrap();
+        let res = analyses_from_yaml(&yaml[0]);
+        assert!(res.is_ok());
+        let analyses = res.unwrap();
+        assert_eq!(analyses.len(), 3);
+        assert_eq!(analyses[0].penalty(), -1.0);
+        assert_eq!(analyses[1].penalty(), -0.5);
+        assert_eq!(analyses[2].penalty(), -2.0);
+    }
+
+    #[test]
+    fn analyses_from_yaml_invalid() {
+        let yaml = YamlLoader::load_from_str("[{ analyser: no-globals }]").unwrap();
+        let res = analyses_from_yaml(&yaml[0]);
+        assert!(res.is_err());
+        assert!(matches!(res, Err(ConfigError::MissingField { .. })));
+    }
+}
