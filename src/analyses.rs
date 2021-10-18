@@ -103,7 +103,7 @@ impl Analyser for NoGlobalsAnalyser {
                 msg: "invalid output of nm".to_string(),
             })?;
 
-        let re = Regex::new(r"\d*\s* [BD] (.*)").map_err(|_| AtstError::InternalError {
+        let re = Regex::new(r"\d*\s* [BCD] (.*)").map_err(|_| AtstError::InternalError {
             msg: "no-globals analyser regex error".to_string(),
         })?;
         Ok(re.is_match(symbols))
