@@ -1,5 +1,7 @@
 # AT-ST: Automatic Testing of Student Tasks
 
+![Build](https://github.com/viktormalik/at-st/actions/workflows/ci.yml/badge.svg?branch=master)
+
 AT-ST is a tool for automated execution and evaluation of programming tasks,
 mainly designed for high school and university teachers. It allows to easily
 specify a list of test cases and code analysers to run.
