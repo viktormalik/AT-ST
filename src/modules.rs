@@ -7,6 +7,8 @@ use std::fs::{read_to_string, remove_file, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::time::Duration;
+use wait_timeout::ChildExt;
 
 /// Modules are used to prepare or evaluate individual project solutions
 /// This trait is used to execute each module on a solution
@@ -186,13 +188,28 @@ impl<'t> Module for TestExec<'t> {
                     })?
                     .write_all(test_stdin.as_bytes());
             }
-            let output = cmd.wait_with_output()?;
-            let stdout = std::str::from_utf8(&output.stdout);
 
-            // Check if stdout matches the expected value
-            // TODO: do not ignore whitespace
+            let timeout = Duration::from_secs(5);
+            let _ = match cmd.wait_timeout(timeout)? {
+                Some(code) => code.code(),
+                None => {
+                    cmd.kill()?;
+                    cmd.wait()?.code()
+                }
+            };
+
             if let Some(test_stdout) = test_case.stdout.as_ref() {
-                if stdout.is_ok() && stdout.unwrap().trim() == test_stdout.trim() {
+                // Retrieve stdout and check if it matches the expected value
+                let mut stdout = String::new();
+                let _ = cmd
+                    .stdout
+                    .ok_or(AtstError::InternalError {
+                        msg: "error getting stdout of a solution program".to_string(),
+                    })?
+                    .read_to_string(&mut stdout);
+
+                // TODO: do not ignore whitespace
+                if stdout.trim() == test_stdout.trim() {
                     solution.score += test_case.score;
                 }
             }
@@ -413,5 +430,24 @@ int main() {
         let res = test_exec.execute(&mut solution);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
+    }
+
+    #[test]
+    fn exec_test_timeout() {
+        let tests = vec![TestCase {
+            score: 1.0,
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"int main() {
+                   while (1) {}
+               }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
+        assert_eq!(solution.score, 0.0)
     }
 }
