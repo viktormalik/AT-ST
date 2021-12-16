@@ -60,6 +60,11 @@ pub enum AtstError {
     ExecError(String),
     #[error("Internal error: {msg}")]
     InternalError { msg: String },
+    #[error("solution execution error: {source}")]
+    SolutionExecErr {
+        #[from]
+        source: std::io::Error,
+    },
 }
 
 /// Main entry point of the program
