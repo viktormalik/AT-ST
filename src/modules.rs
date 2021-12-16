@@ -174,12 +174,9 @@ impl<'t> Module for TestExec<'t> {
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|_| AtstError::InternalError {
-                    msg: "could not execute solution".to_string(),
-                })?;
+                .spawn()?;
 
-            if test_case.stdin.is_some() {
+            if let Some(test_stdin) = test_case.stdin.as_ref() {
                 // Pass stdin to the process and capture its output
                 let _ = cmd
                     .stdin
@@ -187,21 +184,15 @@ impl<'t> Module for TestExec<'t> {
                     .ok_or(AtstError::InternalError {
                         msg: "error getting stdin of a solution program".to_string(),
                     })?
-                    .write_all(test_case.stdin.as_ref().unwrap().as_bytes());
+                    .write_all(test_stdin.as_bytes());
             }
-            let output = cmd
-                .wait_with_output()
-                .map_err(|_| AtstError::InternalError {
-                    msg: "could not execute solution".to_string(),
-                })?;
+            let output = cmd.wait_with_output()?;
             let stdout = std::str::from_utf8(&output.stdout);
 
             // Check if stdout matches the expected value
             // TODO: do not ignore whitespace
-            if test_case.stdout.is_some() {
-                if stdout.is_ok()
-                    && stdout.unwrap().trim() == test_case.stdout.as_ref().unwrap().trim()
-                {
+            if let Some(test_stdout) = test_case.stdout.as_ref() {
+                if stdout.is_ok() && stdout.unwrap().trim() == test_stdout.trim() {
                     solution.score += test_case.score;
                 }
             }
