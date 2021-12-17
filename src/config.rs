@@ -349,7 +349,7 @@ mod test {
     #[test]
     fn parse_optional_str_invalid() {
         let yaml = YamlLoader::load_from_str("option: { field: 123 }").unwrap();
-        let err = mandatory_field_str(&yaml[0]["option"], "option", "field");
+        let err = optional_field_str(&yaml[0]["option"], "option", "field");
         assert!(err.is_err());
         assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
     }
@@ -398,7 +398,7 @@ mod test {
     #[test]
     fn parse_optional_f64_invalid() {
         let yaml = YamlLoader::load_from_str("option: { field: string }").unwrap();
-        let err = mandatory_field_f64(&yaml[0]["option"], "option", "field");
+        let err = optional_field_f64(&yaml[0]["option"], "option", "field");
         assert!(err.is_err());
         assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
     }
@@ -447,7 +447,7 @@ mod test {
     #[test]
     fn parse_optional_vec_str_invalid() {
         let yaml = YamlLoader::load_from_str("option: { field: value }").unwrap();
-        let err = mandatory_field_vec_str(&yaml[0]["option"], "option", "field");
+        let err = optional_field_vec_str(&yaml[0]["option"], "option", "field");
         assert!(err.is_err());
         assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
     }
