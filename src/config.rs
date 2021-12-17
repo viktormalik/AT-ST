@@ -1,7 +1,7 @@
 extern crate yaml_rust;
 
 use crate::analyses::*;
-use crate::TestCase;
+use crate::{TestCase, DEFAULT_TEST_TIMEOUT};
 use log::warn;
 use std::fs::File;
 use std::io::Read;
@@ -28,6 +28,9 @@ pub struct Config {
     pub compiler: Option<String>,
     pub c_flags: Option<String>,
     pub ld_flags: Option<String>,
+
+    // Test execution configuration (ms)
+    pub timeout: u64,
 
     pub test_cases: Vec<TestCase>,
     pub analyses: Vec<Box<dyn Analyser>>,
@@ -86,6 +89,8 @@ impl Config {
         let mut result = Config {
             // Set mandatory fields here
             src_file: mandatory_field_str(&yaml[0], "config", "source")?,
+            // Set default values here
+            timeout: DEFAULT_TEST_TIMEOUT,
             ..Default::default()
         };
 
@@ -102,6 +107,12 @@ impl Config {
                     result.compiler = optional_field_str(val, "compiler", "CC")?;
                     result.c_flags = optional_field_str(val, "compiler", "CFLAGS")?;
                     result.ld_flags = optional_field_str(val, "compiler", "LDFLAGS")?;
+                }
+                Some("test-config") => {
+                    check_fields(val, "test-config", &vec!["timeout"])?;
+                    if let Some(timeout) = optional_field_u64(val, "test-config", "timeout")? {
+                        result.timeout = timeout;
+                    }
                 }
                 Some("analyses") => result.analyses = analyses_from_yaml(val)?,
                 Some("tests") => result.test_cases = tests_from_yaml(val)?,
@@ -219,6 +230,33 @@ fn check_analysis_fields(yaml: &Yaml, name: &str, fields: &Vec<&str>) -> Result<
     analyser_fields.push("analyser");
     let analyser_name = "analyser ".to_string() + name;
     check_fields(yaml, &analyser_name, &analyser_fields)
+}
+
+/// Parse `field` from `yaml` as a i64 number.
+/// Yields `ConfigError` if the value is not a i64.
+/// Returns None if `yaml` does not contain `field`.
+fn optional_field_i64(yaml: &Yaml, name: &str, field: &str) -> Result<Option<i64>, ConfigError> {
+    match &yaml[field] {
+        Yaml::BadValue => Ok(None),
+        val => Ok(Some(val.as_i64().ok_or(
+            make_error!(InvalidField, option: name, field: field, expected_type: "integer number"),
+        )?)),
+    }
+}
+
+/// Parse `field` from `yaml` as a u32 number.
+/// Yields `ConfigError` if the value is not a u32.
+/// Returns None if `yaml` does not contain `field`.
+fn optional_field_u64(yaml: &Yaml, name: &str, field: &str) -> Result<Option<u64>, ConfigError> {
+    match optional_field_i64(yaml, name, field)? {
+        Some(n) => match n > 0 {
+            true => Ok(Some(n as u64)),
+            false => Err(
+                make_error!(InvalidField, option: name, field: field, expected_type: "positive int"),
+            ),
+        },
+        None => Ok(None),
+    }
 }
 
 /// Parse `field` from `yaml` as a f64 number.
@@ -374,6 +412,56 @@ mod test {
     fn parse_mandatory_f64_invalid() {
         let yaml = YamlLoader::load_from_str("option: { field: string }").unwrap();
         let err = mandatory_field_f64(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn parse_optional_i64_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1 }").unwrap();
+        let f = optional_field_i64(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert!(f.as_ref().unwrap().is_some());
+        assert_eq!(f.unwrap().unwrap(), 1);
+    }
+
+    #[test]
+    fn parse_optional_i64_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1 }").unwrap();
+        let f = optional_field_i64(&yaml[0]["option"], "option", "other_field");
+        assert!(f.is_ok());
+        assert!(f.unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_optional_i64_invalid() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1.0 }").unwrap();
+        let err = optional_field_i64(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn parse_optional_u64_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1 }").unwrap();
+        let f = optional_field_u64(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert!(f.as_ref().unwrap().is_some());
+        assert_eq!(f.unwrap().unwrap(), 1);
+    }
+
+    #[test]
+    fn parse_optional_u64_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: 1 }").unwrap();
+        let f = optional_field_u64(&yaml[0]["option"], "option", "other_field");
+        assert!(f.is_ok());
+        assert!(f.unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_optional_u64_invalid() {
+        let yaml = YamlLoader::load_from_str("option: { field: -1 }").unwrap();
+        let err = optional_field_u64(&yaml[0]["option"], "option", "field");
         assert!(err.is_err());
         assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
     }

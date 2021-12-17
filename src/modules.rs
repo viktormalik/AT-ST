@@ -153,11 +153,15 @@ impl Module for Parser {
 /// Running test cases
 pub struct TestExec<'t> {
     test_cases: &'t Vec<TestCase>,
+    timeout: u64,
 }
 
 impl<'t> TestExec<'t> {
-    pub fn new(test_cases: &'t Vec<TestCase>) -> Self {
-        Self { test_cases }
+    pub fn new(test_cases: &'t Vec<TestCase>, timeout: u64) -> Self {
+        Self {
+            test_cases,
+            timeout,
+        }
     }
 }
 
@@ -189,7 +193,7 @@ impl<'t> Module for TestExec<'t> {
                     .write_all(test_stdin.as_bytes());
             }
 
-            let timeout = Duration::from_secs(5);
+            let timeout = Duration::from_millis(self.timeout);
             let _ = match cmd.wait_timeout(timeout)? {
                 Some(code) => code.code(),
                 None => {
@@ -284,6 +288,7 @@ impl Module for ScriptExec {
 mod tests {
     use super::*;
     use crate::test_utils::get_solution;
+    use crate::DEFAULT_TEST_TIMEOUT;
 
     #[test]
     fn compiler_module_ok() {
@@ -378,7 +383,7 @@ int main() {
             "#,
             true,
         );
-        let test_exec = TestExec::new(&tests);
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
         let res = test_exec.execute(&mut solution);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
@@ -402,7 +407,7 @@ int main() {
             "#,
             true,
         );
-        let test_exec = TestExec::new(&tests);
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
         let res = test_exec.execute(&mut solution);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
@@ -426,7 +431,7 @@ int main() {
             "#,
             true,
         );
-        let test_exec = TestExec::new(&tests);
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
         let res = test_exec.execute(&mut solution);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
@@ -445,7 +450,7 @@ int main() {
             "#,
             true,
         );
-        let test_exec = TestExec::new(&tests);
+        let test_exec = TestExec::new(&tests, 100);
         let res = test_exec.execute(&mut solution);
         assert!(res.is_ok());
         assert_eq!(solution.score, 0.0)

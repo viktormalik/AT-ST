@@ -49,6 +49,8 @@ pub struct TestCase {
     pub stdout: Option<String>,
 }
 
+pub const DEFAULT_TEST_TIMEOUT: u64 = 5000;
+
 #[derive(Error, Debug)]
 pub enum AtstError {
     #[error("Configuration error: {source}")]
@@ -120,7 +122,7 @@ pub fn run(
     let mut modules: Vec<Box<dyn Module>> = vec![];
     modules.push(Box::new(Compiler::new(&config)));
     modules.push(Box::new(Parser {}));
-    modules.push(Box::new(TestExec::new(&config.test_cases)));
+    modules.push(Box::new(TestExec::new(&config.test_cases, config.timeout)));
     modules.push(Box::new(AnalysesExec::new(&config.analyses)));
     for script in &config.scripts {
         modules.push(Box::new(ScriptExec::new(script)));

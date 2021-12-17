@@ -29,6 +29,7 @@ Currently, AT-ST allows the following configuration:
   not supported, yet),
 - rules to select the student solutions,
 - compiler options,
+- test execution configuration,
 - list of **test cases** to execute each solution on (see below for supported
   features of test cases).
 - list of **source code analysers** to run (see below for the list of supported
