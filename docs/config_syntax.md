@@ -49,6 +49,14 @@ tests:
 
 ```
 
+- Configuration of tests execution. Supports the following settings:
+  - Timeout - specifies the time in milliseconds after which the solution
+    execution on a test case is killed. The default value is 5 seconds.
+```yaml
+test-config:
+    timeout: 1000 # 1 second
+```
+
 - Lists of source code analyses. Each analyser has its own fields, however an
   analysis should specify the analyser name and the penalty to give to the
   solution (if the analyser passes).
