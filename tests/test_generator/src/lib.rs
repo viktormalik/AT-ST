@@ -1,7 +1,6 @@
 extern crate proc_macro;
 
 use proc_macro::TokenStream;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use syn::{parse_macro_input, LitStr};
 
@@ -35,30 +34,38 @@ pub fn generate_tests(input: TokenStream) -> TokenStream {
         .join(project.clone());
 
     let expected = project_path.join("expected-scores");
-    let expected_scores: HashMap<String, f64> = std::fs::read_to_string(expected)
+    let solutions: Vec<String> = std::fs::read_to_string(expected)
         .expect("Error opening \"expected-scores\"")
         .lines()
-        .map(|l| l.split_at(l.find(":").unwrap()))
-        .map(|(name, score)| (name.to_string(), score[1..].trim().parse::<f64>().unwrap()))
+        .map(|l| l.split(":").nth(0).unwrap().to_string())
         .collect();
 
     let mut tests = format!("mod {} {{\n", project);
-    for score in expected_scores {
+    for solution in solutions {
         tests += &format!(
             "#[test]
-             fn test_{}() {{
-                 let solution = \"{}\";
-                 let project_path = std::path::PathBuf::from(\"{}\");
-                 let config_file = std::path::PathBuf::from(\"config.yaml\");
-                 let res = atst::run(&project_path, &config_file, solution);
-                 assert!(res.is_ok());
-                 assert!(res.as_ref().unwrap().contains_key(solution));
-                 assert_eq!(*res.as_ref().unwrap().get(solution).unwrap(), {});
-             }}\n",
-            score.0,
-            score.0,
-            project_path.to_str().unwrap(),
-            score.1
+            fn test_{}() {{
+                let solution = \"{}\";
+                let project_path = std::path::PathBuf::from(\"{}\");
+                let config_file = std::path::PathBuf::from(\"config.yaml\");
+
+                let expected = std::fs::read_to_string(project_path.join(\"expected-scores\"))
+                    .expect(\"Error opening expected-scores\")
+                    .lines()
+                    .find(|l| l.starts_with(solution)).unwrap()
+                    .split(':').nth(1).unwrap()
+                    .trim()
+                    .parse::<f64>().unwrap();
+
+                let res = atst::run(&project_path, &config_file, solution);
+
+                assert!(res.is_ok());
+                assert!(res.as_ref().unwrap().contains_key(solution));
+                assert_eq!(*res.as_ref().unwrap().get(solution).unwrap(), expected);
+            }}\n",
+            solution,
+            solution,
+            project_path.to_str().unwrap()
         );
     }
     tests += "}\n";
