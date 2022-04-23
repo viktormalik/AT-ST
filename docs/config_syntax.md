@@ -46,6 +46,9 @@ tests:
       stdout: |
         multiline
         output
+    - name: third test
+      score: 1.0
+      stdin: </path/to/file    # content of the file is passed to stdin
 
 ```
 

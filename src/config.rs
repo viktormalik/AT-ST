@@ -3,7 +3,7 @@ extern crate yaml_rust;
 use crate::analyses::*;
 use crate::{TestCase, DEFAULT_TEST_TIMEOUT};
 use log::warn;
-use std::fs::File;
+use std::fs::{read_to_string, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -18,6 +18,7 @@ use yaml_rust::{Yaml, YamlLoader};
 /// Typically parsed from a YAML file
 #[derive(Default)]
 pub struct Config {
+    pub project_path: PathBuf,
     // Solutions information
     pub excluded_dirs: Vec<String>,
 
@@ -87,6 +88,7 @@ impl Config {
         let config_options = yaml[0].as_hash().ok_or(ConfigError::InvalidFormat)?;
 
         let mut result = Config {
+            project_path: project_path.to_path_buf(),
             // Set mandatory fields here
             src_file: mandatory_field_str(&yaml[0], "config", "source")?,
             // Set default values here
@@ -133,7 +135,20 @@ impl Config {
                 }
             };
         }
-        Ok(result)
+        result.process()
+    }
+
+    fn process(mut self) -> Result<Self, ConfigError> {
+        for t in &mut self.test_cases {
+            // If stdin should be read from a file, read it
+            if let Some(stdin) = t.stdin.as_ref() {
+                if stdin.trim().starts_with('<') {
+                    let file = self.project_path.join(&stdin.trim()[1..]);
+                    t.stdin = Some(read_to_string(file.as_path())?);
+                }
+            }
+        }
+        Ok(self)
     }
 }
 
