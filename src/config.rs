@@ -142,10 +142,11 @@ impl Config {
         for t in &mut self.test_cases {
             // If stdin should be read from a file, read it
             if let Some(stdin) = t.stdin.as_ref() {
-                if stdin.trim().starts_with('<') {
-                    let file = self.project_path.join(&stdin.trim()[1..]);
-                    t.stdin = Some(read_to_string(file.as_path())?);
-                }
+                t.stdin = Some(expand_string_from_file(&stdin, &self.project_path)?);
+            }
+            // If stdout should be compared to contents of a file, read the file
+            if let Some(stdout) = t.stdout.as_ref() {
+                t.stdout = Some(expand_string_from_file(&stdout, &self.project_path)?);
             }
         }
         Ok(self)
@@ -352,6 +353,17 @@ fn mandatory_field_vec_str(
 ) -> Result<Vec<String>, ConfigError> {
     optional_field_vec_str(yaml, name, field)?
         .ok_or_else(|| make_error!(MissingField, option: name, field: field))
+}
+
+/// If `string` starts with '<', interpret the rest as the name of a file inside `project_path`,
+/// read the file, and return the contents. Otherwise return the original `string`.
+/// If the file does not exist, pass the error along.
+fn expand_string_from_file(string: &str, project_path: &Path) -> Result<String, std::io::Error> {
+    if string.starts_with('<') {
+        let file = project_path.join(&string.trim()[1..]);
+        return read_to_string(file.as_path());
+    }
+    Ok(string.to_string())
 }
 
 #[cfg(test)]

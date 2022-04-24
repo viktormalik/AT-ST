@@ -49,6 +49,7 @@ tests:
     - name: third test
       score: 1.0
       stdin: </path/to/file    # content of the file is passed to stdin
+      stdout: </path/to/file   # stdout will be compared to content of the file
 
 ```
 

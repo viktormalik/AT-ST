@@ -54,7 +54,5 @@ tests:
   - name: file input
     score: 1.0
     args: "1"
-    stdin: "<input"
-    stdout: |
-      a
-      b
+    stdin: <input
+    stdout: <output
