@@ -82,11 +82,15 @@ impl Analyser for NoHeaderAnalyser {
 /// Uses 'nm' on the object file.
 pub struct NoGlobalsAnalyser {
     penalty: f64,
+    exceptions: Vec<String>,
 }
 
 impl NoGlobalsAnalyser {
-    pub fn new(penalty: f64) -> Self {
-        Self { penalty }
+    pub fn new(penalty: f64, exceptions: Vec<String>) -> Self {
+        Self {
+            penalty,
+            exceptions,
+        }
     }
 }
 
@@ -102,11 +106,20 @@ impl Analyser for NoGlobalsAnalyser {
             std::str::from_utf8(&nm_output.stdout).map_err(|_| AtstError::InternalError {
                 msg: "invalid output of nm".to_string(),
             })?;
+        let global_regex =
+            Regex::new(r"\d*\s* [BCD] (.*)").map_err(|_| AtstError::InternalError {
+                msg: "no-globals analyser regex error".to_string(),
+            })?;
 
-        let re = Regex::new(r"\d*\s* [BCD] (.*)").map_err(|_| AtstError::InternalError {
-            msg: "no-globals analyser regex error".to_string(),
-        })?;
-        Ok(re.is_match(symbols))
+        let except_regexes =
+            RegexSet::new(&self.exceptions).map_err(|_| AtstError::InternalError {
+                msg: "no-globals analyser regex error".to_string(),
+            })?;
+
+        Ok(symbols
+            .lines()
+            .filter_map(|line| global_regex.captures(line))
+            .any(|sym| !except_regexes.is_match(&sym[1])))
     }
 
     fn penalty(&self) -> f64 {
@@ -175,13 +188,28 @@ pub mod tests {
 
     #[test]
     fn no_globals_analyser_match() {
-        let analyser = NoGlobalsAnalyser { penalty: -1.0 };
+        let analyser = NoGlobalsAnalyser {
+            penalty: -1.0,
+            exceptions: vec![],
+        };
         test_on_default(&analyser, true);
     }
 
     #[test]
     fn no_globals_analyser_nomatch() {
-        let analyser = NoGlobalsAnalyser { penalty: -1.0 };
+        let analyser = NoGlobalsAnalyser {
+            penalty: -1.0,
+            exceptions: vec![],
+        };
         test_on(&analyser, "int main() {}", &vec![], false);
+    }
+
+    #[test]
+    fn no_globals_analyser_except() {
+        let analyser = NoGlobalsAnalyser {
+            penalty: -1.0,
+            exceptions: vec!["x.*".to_string()],
+        };
+        test_on_default(&analyser, false);
     }
 }

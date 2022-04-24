@@ -72,8 +72,9 @@ analyses:
     - analyser: no-header
       header: string.h
       penalty: -1.0
-    - analyser: no-globals:
+    - analyser: no-globals
       penalty: -1.0
+      except: [ .*err.* ]     # allows globals containing the "err" substring
 ```
 
 You can find examples of project configurations in [integrations

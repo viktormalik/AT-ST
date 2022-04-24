@@ -202,12 +202,11 @@ fn analyses_from_yaml(yaml: &Yaml) -> Result<Vec<Box<dyn Analyser>>, ConfigError
                 )) as Box<dyn Analyser>);
             }
             AnalyserKind::NoGlobals => {
-                check_analysis_fields(analysis, &analysis_name, &vec!["penalty"])?;
-                result.push(Box::new(NoGlobalsAnalyser::new(mandatory_field_f64(
-                    analysis,
-                    "no-globals",
-                    "penalty",
-                )?)) as Box<dyn Analyser>);
+                check_analysis_fields(analysis, &analysis_name, &vec!["penalty", "except"])?;
+                result.push(Box::new(NoGlobalsAnalyser::new(
+                    mandatory_field_f64(analysis, "no-globals", "penalty")?,
+                    optional_field_vec_str(analysis, "no-globals", "except")?.unwrap_or(vec![]),
+                )) as Box<dyn Analyser>);
             }
             AnalyserKind::Unsupported => {
                 warn!(
