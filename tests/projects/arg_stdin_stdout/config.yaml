@@ -56,3 +56,19 @@ tests:
     args: "1"
     stdin: <input
     stdout: <output
+
+  - name: multiple test cases
+    score: 1.0
+    test-cases:
+      - args: "1"
+        stdin: |
+          single line
+        stdout: |
+          s
+      - args: "2"
+        stdin: |
+          first
+          second
+        stdout: |
+          fi
+          se

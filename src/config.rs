@@ -1,7 +1,7 @@
 extern crate yaml_rust;
 
 use crate::analyses::*;
-use crate::{TestCase, DEFAULT_TEST_TIMEOUT};
+use crate::{Test, TestCase, TestCasesRequirement, DEFAULT_TEST_TIMEOUT};
 use log::warn;
 use std::fs::{read_to_string, File};
 use std::io::Read;
@@ -33,7 +33,7 @@ pub struct Config {
     // Test execution configuration (ms)
     pub timeout: u64,
 
-    pub test_cases: Vec<TestCase>,
+    pub tests: Vec<Test>,
     pub analyses: Vec<Box<dyn Analyser>>,
     pub scripts: Vec<PathBuf>,
 }
@@ -117,7 +117,7 @@ impl Config {
                     }
                 }
                 Some("analyses") => result.analyses = analyses_from_yaml(val)?,
-                Some("tests") => result.test_cases = tests_from_yaml(val)?,
+                Some("tests") => result.tests = tests_from_yaml(val)?,
                 Some("scripts") => {
                     result.scripts = optional_field_vec_str(&yaml[0], "config", "scripts")?
                         .unwrap_or(vec![])
@@ -139,21 +139,23 @@ impl Config {
     }
 
     fn process(mut self) -> Result<Self, ConfigError> {
-        for t in &mut self.test_cases {
-            // If stdin should be read from a file, read it
-            if let Some(stdin) = t.stdin.as_ref() {
-                t.stdin = Some(expand_string_from_file(&stdin, &self.project_path)?);
-            }
-            // If stdout should be compared to contents of a file, read the file
-            if let Some(stdout) = t.stdout.as_ref() {
-                t.stdout = Some(expand_string_from_file(&stdout, &self.project_path)?);
+        for t in &mut self.tests {
+            for tc in &mut t.test_cases {
+                // If stdin should be read from a file, read it
+                if let Some(stdin) = tc.stdin.as_ref() {
+                    tc.stdin = Some(expand_string_from_file(&stdin, &self.project_path)?);
+                }
+                // If stdout should be compared to contents of a file, read the file
+                if let Some(stdout) = tc.stdout.as_ref() {
+                    tc.stdout = Some(expand_string_from_file(&stdout, &self.project_path)?);
+                }
             }
         }
         Ok(self)
     }
 }
 
-fn tests_from_yaml(yaml: &Yaml) -> Result<Vec<TestCase>, ConfigError> {
+fn tests_from_yaml(yaml: &Yaml) -> Result<Vec<Test>, ConfigError> {
     match yaml.as_vec() {
         Some(v) => v
             .iter()
@@ -162,23 +164,65 @@ fn tests_from_yaml(yaml: &Yaml) -> Result<Vec<TestCase>, ConfigError> {
                 check_fields(
                     test,
                     &test_name,
-                    &vec!["name", "score", "args", "stdin", "stdout"],
+                    &vec![
+                        "name",
+                        "score",
+                        "args",
+                        "stdin",
+                        "stdout",
+                        "test-cases",
+                        "require",
+                    ],
                 )?;
-                Ok(TestCase {
+
+                let test_cases = match test["test-cases"].as_vec() {
+                    Some(cases) => cases
+                        .iter()
+                        .map(|case| test_case_from_yaml(case, &test_name, true))
+                        .collect::<Result<Vec<TestCase>, _>>()?,
+                    None => vec![test_case_from_yaml(test, &test_name, false)?],
+                };
+                let requirement = match optional_field_str(test, &test_name, "require")?.as_deref()
+                {
+                    Some("any") => TestCasesRequirement::ANY,
+                    Some("all") => TestCasesRequirement::ALL,
+                    Some(_) => Err(make_error!(
+                        InvalidOption,
+                        option: "expect",
+                        expected_type: "\"all\" or \"any\""
+                    ))?,
+                    _ => TestCasesRequirement::ALL,
+                };
+
+                Ok(Test {
                     name: test_name.to_string(),
                     score: mandatory_field_f64(test, &test_name, "score")?,
-                    args: optional_field_str(test, &test_name, "args")?
-                        .unwrap_or_default()
-                        .split_whitespace()
-                        .map(String::from)
-                        .collect(),
-                    stdin: optional_field_str(test, &test_name, "stdin")?,
-                    stdout: optional_field_str(test, &test_name, "stdout")?,
+                    test_cases,
+                    requirement,
                 })
             })
             .collect(),
         None => Ok(vec![]),
     }
+}
+
+fn test_case_from_yaml(
+    yaml: &Yaml,
+    test_name: &str,
+    is_inner_case: bool,
+) -> Result<TestCase, ConfigError> {
+    if is_inner_case {
+        check_fields(yaml, test_name, &vec!["args", "stdin", "stdout"])?;
+    }
+    Ok(TestCase {
+        args: optional_field_str(yaml, test_name, "args")?
+            .unwrap_or_default()
+            .split_whitespace()
+            .map(String::from)
+            .collect(),
+        stdin: optional_field_str(yaml, test_name, "stdin")?,
+        stdout: optional_field_str(yaml, test_name, "stdout")?,
+    })
 }
 
 fn analyses_from_yaml(yaml: &Yaml) -> Result<Vec<Box<dyn Analyser>>, ConfigError> {
@@ -574,7 +618,7 @@ mod test {
     }
 
     #[test]
-    fn tests_from_yaml_ok() {
+    fn tests_from_yaml_single_ok() {
         let yaml = YamlLoader::load_from_str(
             "
 - name: test
@@ -590,13 +634,14 @@ mod test {
         assert_eq!(tests.len(), 1);
         assert_eq!(tests[0].name, "test");
         assert_eq!(tests[0].score, 1.0);
-        assert_eq!(tests[0].args, vec!["-Wall", "-Wextra"]);
-        assert_eq!(tests[0].stdin, Some("input".to_string()));
-        assert_eq!(tests[0].stdout, Some("output".to_string()));
+        assert_eq!(tests[0].test_cases.len(), 1);
+        assert_eq!(tests[0].test_cases[0].args, vec!["-Wall", "-Wextra"]);
+        assert_eq!(tests[0].test_cases[0].stdin, Some("input".to_string()));
+        assert_eq!(tests[0].test_cases[0].stdout, Some("output".to_string()));
     }
 
     #[test]
-    fn tests_from_yaml_incomplete() {
+    fn tests_from_yaml_single_incomplete() {
         let yaml = YamlLoader::load_from_str("[{ score: 1.0 }]").unwrap();
         let res = tests_from_yaml(&yaml[0]);
         assert!(res.is_ok());
@@ -604,9 +649,41 @@ mod test {
         assert_eq!(tests.len(), 1);
         assert_eq!(tests[0].name, "");
         assert_eq!(tests[0].score, 1.0);
-        assert!(tests[0].args.is_empty());
-        assert!(tests[0].stdin.is_none());
-        assert!(tests[0].stdout.is_none());
+        assert_eq!(tests[0].test_cases.len(), 1);
+        assert!(tests[0].test_cases[0].args.is_empty());
+        assert!(tests[0].test_cases[0].stdin.is_none());
+        assert!(tests[0].test_cases[0].stdout.is_none());
+    }
+
+    #[test]
+    fn tests_from_yaml_multiple() {
+        let yaml = YamlLoader::load_from_str(
+            "
+- name: test
+  score: 1.0
+  test-cases:
+    - args: -Wall -Wextra
+      stdin: input
+      stdout: output
+    - args: -Wall
+      stdin: in
+      stdout: out
+  require: any",
+        )
+        .unwrap();
+        let res = tests_from_yaml(&yaml[0]);
+        assert!(res.is_ok());
+        let tests = res.unwrap();
+        assert_eq!(tests.len(), 1);
+        assert_eq!(tests[0].name, "test");
+        assert_eq!(tests[0].score, 1.0);
+        assert_eq!(tests[0].test_cases.len(), 2);
+        assert_eq!(tests[0].test_cases[0].args, vec!["-Wall", "-Wextra"]);
+        assert_eq!(tests[0].test_cases[0].stdin, Some("input".to_string()));
+        assert_eq!(tests[0].test_cases[0].stdout, Some("output".to_string()));
+        assert_eq!(tests[0].test_cases[1].args, vec!["-Wall"]);
+        assert_eq!(tests[0].test_cases[1].stdin, Some("in".to_string()));
+        assert_eq!(tests[0].test_cases[1].stdout, Some("out".to_string()));
     }
 
     #[test]

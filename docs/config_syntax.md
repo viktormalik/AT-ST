@@ -50,7 +50,17 @@ tests:
       score: 1.0
       stdin: </path/to/file    # content of the file is passed to stdin
       stdout: </path/to/file   # stdout will be compared to content of the file
-
+    - name: test with multiple cases
+      score: 1.0
+      test-cases:
+        - args: --arg1
+          stdin: input1
+          stdout: output1
+        - args: --arg2
+          stdin: input2
+          stdout: output2
+      require: all            # how many cases must pass to get the points
+                              # possible values: "any", "all"
 ```
 
 - Configuration of tests execution. Supports the following settings:

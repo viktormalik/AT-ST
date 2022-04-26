@@ -39,14 +39,36 @@ impl Solution {
 }
 
 /// Single test case for the project
-/// Contains test name, test input (args and stdin), expected output, and test score
+/// Contains test input (args and stdin) and expected output
 #[derive(Default)]
 pub struct TestCase {
-    pub name: String,
-    pub score: f64,
     pub args: Vec<String>,
     pub stdin: Option<String>,
     pub stdout: Option<String>,
+}
+
+pub enum TestCasesRequirement {
+    ALL,
+    ANY,
+}
+
+impl Default for TestCasesRequirement {
+    fn default() -> Self {
+        TestCasesRequirement::ALL
+    }
+}
+
+/// A scored test for the project
+/// Contains test `name`, `score`, and a list of test `cases`.
+/// The `requirement` field specifies when the score is awarded. Current possible values are:
+///   - `ALL`: all test cases must pass
+///   - `ANY`: at least one test case must pass
+#[derive(Default)]
+pub struct Test {
+    pub name: String,
+    pub score: f64,
+    pub test_cases: Vec<TestCase>,
+    pub requirement: TestCasesRequirement,
 }
 
 pub const DEFAULT_TEST_TIMEOUT: u64 = 5000;
@@ -122,7 +144,7 @@ pub fn run(
     let mut modules: Vec<Box<dyn Module>> = vec![];
     modules.push(Box::new(Compiler::new(&config)));
     modules.push(Box::new(Parser {}));
-    modules.push(Box::new(TestExec::new(&config.test_cases, config.timeout)));
+    modules.push(Box::new(TestExec::new(&config.tests, config.timeout)));
     modules.push(Box::new(AnalysesExec::new(&config.analyses)));
     for script in &config.scripts {
         modules.push(Box::new(ScriptExec::new(script)));

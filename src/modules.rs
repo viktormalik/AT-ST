@@ -1,7 +1,7 @@
 use crate::analyses::Analyser;
 use crate::config::Config;
-use crate::TestCase;
 use crate::{AtstError, Solution};
+use crate::{Test, TestCasesRequirement};
 use regex::Regex;
 use std::fs::{read_to_string, remove_file, File};
 use std::io::{Read, Write};
@@ -152,16 +152,13 @@ impl Module for Parser {
 
 /// Running test cases
 pub struct TestExec<'t> {
-    test_cases: &'t Vec<TestCase>,
+    tests: &'t Vec<Test>,
     timeout: u64,
 }
 
 impl<'t> TestExec<'t> {
-    pub fn new(test_cases: &'t Vec<TestCase>, timeout: u64) -> Self {
-        Self {
-            test_cases,
-            timeout,
-        }
+    pub fn new(tests: &'t Vec<Test>, timeout: u64) -> Self {
+        Self { tests, timeout }
     }
 }
 
@@ -173,49 +170,60 @@ impl<'t> Module for TestExec<'t> {
             return Ok(());
         }
 
-        for test_case in self.test_cases {
-            // Create process with correct arguments
-            let mut cmd = Command::new(prog.clone())
-                .args(&test_case.args)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?;
+        for test in self.tests {
+            let mut cases_passed = 0;
+            for test_case in &test.test_cases {
+                // Create process with correct arguments
+                let mut cmd = Command::new(prog.clone())
+                    .args(&test_case.args)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()?;
 
-            if let Some(test_stdin) = test_case.stdin.as_ref() {
-                // Pass stdin to the process and capture its output
-                let _ = cmd
-                    .stdin
-                    .as_mut()
-                    .ok_or(AtstError::InternalError {
-                        msg: "error getting stdin of a solution program".to_string(),
-                    })?
-                    .write_all(test_stdin.as_bytes());
+                if let Some(test_stdin) = test_case.stdin.as_ref() {
+                    // Pass stdin to the process and capture its output
+                    let _ = cmd
+                        .stdin
+                        .as_mut()
+                        .ok_or(AtstError::InternalError {
+                            msg: "error getting stdin of a solution program".to_string(),
+                        })?
+                        .write_all(test_stdin.as_bytes());
+                }
+
+                let timeout = Duration::from_millis(self.timeout);
+                let _ = match cmd.wait_timeout(timeout)? {
+                    Some(code) => code.code(),
+                    None => {
+                        cmd.kill()?;
+                        cmd.wait()?.code()
+                    }
+                };
+
+                if let Some(test_stdout) = test_case.stdout.as_ref() {
+                    // Retrieve stdout and check if it matches the expected value
+                    let mut stdout = String::new();
+                    let _ = cmd
+                        .stdout
+                        .ok_or(AtstError::InternalError {
+                            msg: "error getting stdout of a solution program".to_string(),
+                        })?
+                        .read_to_string(&mut stdout);
+
+                    // TODO: do not ignore whitespace
+                    if stdout.trim() == test_stdout.trim() {
+                        cases_passed += 1;
+                    }
+                }
             }
-
-            let timeout = Duration::from_millis(self.timeout);
-            let _ = match cmd.wait_timeout(timeout)? {
-                Some(code) => code.code(),
-                None => {
-                    cmd.kill()?;
-                    cmd.wait()?.code()
-                }
+            // Award score if the requirement of passed cases is fulfilled
+            let test_passed = match test.requirement {
+                TestCasesRequirement::ALL => cases_passed == test.test_cases.len(),
+                TestCasesRequirement::ANY => cases_passed >= 1,
             };
-
-            if let Some(test_stdout) = test_case.stdout.as_ref() {
-                // Retrieve stdout and check if it matches the expected value
-                let mut stdout = String::new();
-                let _ = cmd
-                    .stdout
-                    .ok_or(AtstError::InternalError {
-                        msg: "error getting stdout of a solution program".to_string(),
-                    })?
-                    .read_to_string(&mut stdout);
-
-                // TODO: do not ignore whitespace
-                if stdout.trim() == test_stdout.trim() {
-                    solution.score += test_case.score;
-                }
+            if test_passed {
+                solution.score += test.score;
             }
         }
         Ok(())
@@ -288,7 +296,7 @@ impl Module for ScriptExec {
 mod tests {
     use super::*;
     use crate::test_utils::get_solution;
-    use crate::DEFAULT_TEST_TIMEOUT;
+    use crate::{TestCase, TestCasesRequirement, DEFAULT_TEST_TIMEOUT};
 
     #[test]
     fn compiler_module_ok() {
@@ -370,9 +378,12 @@ int main() {
 
     #[test]
     fn exec_test_basic() {
-        let tests = vec![TestCase {
+        let tests = vec![Test {
             score: 1.0,
-            stdout: Some("hello".to_string()),
+            test_cases: vec![TestCase {
+                stdout: Some("hello".to_string()),
+                ..Default::default()
+            }],
             ..Default::default()
         }];
         let mut solution = get_solution(
@@ -391,10 +402,13 @@ int main() {
 
     #[test]
     fn exec_test_with_arg() {
-        let tests = vec![TestCase {
+        let tests = vec![Test {
             score: 1.0,
-            args: vec!["arg".to_string()],
-            stdout: Some("hello".to_string()),
+            test_cases: vec![TestCase {
+                args: vec!["arg".to_string()],
+                stdout: Some("hello".to_string()),
+                ..Default::default()
+            }],
             ..Default::default()
         }];
         let mut solution = get_solution(
@@ -415,10 +429,13 @@ int main() {
 
     #[test]
     fn exec_test_with_stdin() {
-        let tests = vec![TestCase {
+        let tests = vec![Test {
             score: 1.0,
-            stdin: Some("hello".to_string()),
-            stdout: Some("hello".to_string()),
+            test_cases: vec![TestCase {
+                stdin: Some("hello".to_string()),
+                stdout: Some("hello".to_string()),
+                ..Default::default()
+            }],
             ..Default::default()
         }];
         let mut solution = get_solution(
@@ -438,9 +455,78 @@ int main() {
     }
 
     #[test]
-    fn exec_test_timeout() {
-        let tests = vec![TestCase {
+    fn exec_test_multi_cases_all() {
+        let tests = vec![Test {
             score: 1.0,
+            requirement: TestCasesRequirement::ALL,
+            test_cases: vec![
+                TestCase {
+                    args: vec!["hello".to_string()],
+                    stdout: Some("hello".to_string()),
+                    ..Default::default()
+                },
+                TestCase {
+                    args: vec!["world".to_string()],
+                    stdout: Some("world".to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               int main(int argc, char **argv) {
+                   printf("%s", argv[1]);
+                }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
+        assert_eq!(solution.score, 1.0);
+    }
+
+    #[test]
+    fn exec_test_multi_cases_any() {
+        let tests = vec![Test {
+            score: 1.0,
+            requirement: TestCasesRequirement::ANY,
+            test_cases: vec![
+                TestCase {
+                    args: vec!["hello".to_string()],
+                    stdout: Some("hello".to_string()),
+                    ..Default::default()
+                },
+                TestCase {
+                    args: vec!["world".to_string()],
+                    stdout: Some("hello".to_string()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               int main(int argc, char **argv) {
+                   printf("%s", argv[1]);
+                }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
+        assert_eq!(solution.score, 1.0);
+    }
+
+    #[test]
+    fn exec_test_timeout() {
+        let tests = vec![Test {
+            score: 1.0,
+            test_cases: vec![TestCase {
+                ..Default::default()
+            }],
             ..Default::default()
         }];
         let mut solution = get_solution(
