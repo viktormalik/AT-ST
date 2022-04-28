@@ -6,6 +6,7 @@ use log::warn;
 use std::fs::{read_to_string, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use thiserror::Error;
 use yaml_rust::{Yaml, YamlLoader};
 
@@ -54,9 +55,11 @@ pub enum ConfigError {
         field: String,
         expected_type: String,
     },
+    #[error("command passed to stdin: {msg}")]
+    InvalidCommand { msg: String },
     #[error("'{option}' is missing a mandatory field '{field}'")]
     MissingField { option: String, field: String },
-    #[error("config file error: {source}")]
+    #[error("{source}")]
     BadFile {
         #[from]
         source: std::io::Error,
@@ -141,9 +144,14 @@ impl Config {
     fn process(mut self) -> Result<Self, ConfigError> {
         for t in &mut self.tests {
             for tc in &mut t.test_cases {
-                // If stdin should be read from a file, read it
                 if let Some(stdin) = tc.stdin.as_ref() {
-                    tc.stdin = Some(expand_string_from_file(&stdin, &self.project_path)?);
+                    if stdin.starts_with('<') {
+                        // Pass contents of a file to stdin
+                        tc.stdin = Some(expand_string_from_file(&stdin, &self.project_path)?);
+                    } else if stdin.starts_with("$(") {
+                        // Expand a command to stdin
+                        tc.stdin = Some(expand_string_from_command(&stdin)?);
+                    }
                 }
                 // If stdout should be compared to contents of a file, read the file
                 if let Some(stdout) = tc.stdout.as_ref() {
@@ -409,6 +417,28 @@ fn expand_string_from_file(string: &str, project_path: &Path) -> Result<String, 
     Ok(string.to_string())
 }
 
+/// If `string` has form "$(shell command)", execute the command and return its stdout.
+/// Otherwise return the original `string`.
+/// If the command fails to execute, an error is returned.
+fn expand_string_from_command(string: &str) -> Result<String, ConfigError> {
+    if !string.starts_with("$(") {
+        return Ok(string.to_string());
+    }
+
+    if !string.ends_with(')') {
+        return Err(make_error!(InvalidCommand, msg: "missing trailing \')\'"));
+    }
+
+    let cmd: Vec<&str> = string[2..string.len() - 1].split(' ').collect();
+    if cmd.len() == 0 || cmd.len() == 1 && cmd[0].trim().is_empty() {
+        return Err(make_error!(InvalidCommand, msg: "empty command"));
+    }
+
+    let output = Command::new(&cmd[0]).args(&cmd[1..]).output()?;
+    Ok(String::from_utf8(output.stdout)
+        .map_err(|e| make_error!(InvalidCommand, msg: format!("{}", e)))?)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -615,6 +645,30 @@ mod test {
         let yaml = YamlLoader::load_from_str("{ field1: val1, field2: val2 }").unwrap();
         let res = check_fields(&yaml[0], "", &vec!["field1", "field2"]);
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn expand_string_from_command_ok() {
+        let res = expand_string_from_command("$(echo hello)");
+        assert!(res.is_ok());
+        assert_eq!(res.unwrap(), "hello\n");
+    }
+
+    #[test]
+    fn expand_string_from_command_empty() {
+        let res = expand_string_from_command("$()");
+        assert!(res.is_err());
+        assert!(matches!(
+            res.unwrap_err(),
+            ConfigError::InvalidCommand { .. }
+        ));
+    }
+
+    #[test]
+    fn expand_string_from_command_fail() {
+        let res = expand_string_from_command("$(nocmd)");
+        assert!(res.is_err());
+        assert!(matches!(res.unwrap_err(), ConfigError::BadFile { .. }));
     }
 
     #[test]
