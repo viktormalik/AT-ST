@@ -9,8 +9,10 @@ char prefix[100];
 
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
-        return 1;
+    if (argc != 2) {
+      fprintf(stderr, "incorrect number of arguments\n");
+      return 1;
+    }
 
     int N = atoi(argv[1]);
 

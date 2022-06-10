@@ -201,20 +201,10 @@ impl<'t> Module for TestExec<'t> {
                     }
                 };
 
-                if let Some(test_stdout) = test_case.stdout.as_ref() {
-                    // Retrieve stdout and check if it matches the expected value
-                    let mut stdout = String::new();
-                    let _ = cmd
-                        .stdout
-                        .ok_or(AtstError::InternalError {
-                            msg: "error getting stdout of a solution program".to_string(),
-                        })?
-                        .read_to_string(&mut stdout);
-
-                    // TODO: do not ignore whitespace
-                    if stdout.trim() == test_stdout.trim() {
-                        cases_passed += 1;
-                    }
+                if match_output(&mut cmd.stdout, &test_case.stdout)?
+                    && match_output(&mut cmd.stderr, &test_case.stderr)?
+                {
+                    cases_passed += 1;
                 }
             }
             // Award score if the requirement of passed cases is fulfilled
@@ -228,6 +218,28 @@ impl<'t> Module for TestExec<'t> {
         }
         Ok(())
     }
+}
+
+fn match_output(
+    stream: &mut Option<impl Read>,
+    expected: &Option<String>,
+) -> Result<bool, AtstError> {
+    if let Some(expected_output) = expected.as_ref() {
+        let mut output = String::new();
+        let _ = stream
+            .as_mut()
+            .ok_or(AtstError::InternalError {
+                msg: "error getting output of a solution program".to_string(),
+            })?
+            .read_to_string(&mut output);
+
+        // TODO: do not ignore whitespace
+        return Ok(match expected_output.trim() {
+            "*" => !output.trim().is_empty(),
+            o => o == output.trim(),
+        });
+    }
+    Ok(true)
 }
 
 /// Running source analyses
@@ -525,6 +537,7 @@ int main() {
         let tests = vec![Test {
             score: 1.0,
             test_cases: vec![TestCase {
+                stdout: Some("hello world".to_string()),
                 ..Default::default()
             }],
             ..Default::default()
@@ -532,11 +545,84 @@ int main() {
         let mut solution = get_solution(
             r#"int main() {
                    while (1) {}
+                   printf("hello world\n");
                }
             "#,
             true,
         );
         let test_exec = TestExec::new(&tests, 100);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
+        assert_eq!(solution.score, 0.0)
+    }
+
+    #[test]
+    fn exec_test_stderr() {
+        let tests = vec![Test {
+            score: 1.0,
+            test_cases: vec![TestCase {
+                stderr: Some("error message".to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               int main() {
+                   fprintf(stderr, "error message\n");
+               }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
+        assert_eq!(solution.score, 1.0)
+    }
+
+    #[test]
+    fn exec_test_wildcard() {
+        let tests = vec![Test {
+            score: 1.0,
+            test_cases: vec![TestCase {
+                stderr: Some("*".to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               int main() {
+                   fprintf(stderr, "error message\n");
+               }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
+        let res = test_exec.execute(&mut solution);
+        assert!(res.is_ok());
+        assert_eq!(solution.score, 1.0)
+    }
+
+    #[test]
+    fn exec_test_wildcard_empty() {
+        let tests = vec![Test {
+            score: 1.0,
+            test_cases: vec![TestCase {
+                stdout: Some("*".to_string()),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               int main() {
+                   return 0;
+               }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
         let res = test_exec.execute(&mut solution);
         assert!(res.is_ok());
         assert_eq!(solution.score, 0.0)

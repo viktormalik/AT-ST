@@ -45,6 +45,7 @@ pub struct TestCase {
     pub args: Vec<String>,
     pub stdin: Option<String>,
     pub stdout: Option<String>,
+    pub stderr: Option<String>,
 }
 
 pub enum TestCasesRequirement {
