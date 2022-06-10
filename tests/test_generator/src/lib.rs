@@ -57,7 +57,7 @@ pub fn generate_tests(input: TokenStream) -> TokenStream {
                     .trim()
                     .parse::<f64>().unwrap();
 
-                let res = atst::run(&project_path, &config_file, solution);
+                let res = atst::run(&project_path, &config_file, solution, 1);
 
                 assert!(res.is_ok());
                 assert!(res.as_ref().unwrap().contains_key(solution));

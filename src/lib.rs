@@ -99,6 +99,7 @@ pub fn run(
     path: &PathBuf,
     config_file: &PathBuf,
     only_solution: &str,
+    verbosity: u32,
 ) -> Result<HashMap<String, f64>, AtstError> {
     let config = Config::from_yaml(&config_file, &path)?;
 
@@ -162,6 +163,9 @@ pub fn run(
             .unwrap()
             .to_string();
         print!("{}: ", name);
+        if verbosity > 0 {
+            println!();
+        }
 
         let src_file = &solution.path.join(&solution.src_file);
         if !src_file.exists() {
@@ -170,9 +174,17 @@ pub fn run(
         }
 
         for m in &modules {
-            m.execute(&mut solution)?;
+            m.execute(&mut solution, verbosity)?;
         }
-        println!("{}", (solution.score * 100.0).round() / 100.0);
+
+        let rounded_score = (solution.score * 100.0).round() / 100.0;
+        if verbosity > 0 {
+            println!("Total: {}", rounded_score);
+            println!();
+        } else {
+            println!("{}", rounded_score);
+        }
+
         result.insert(name.to_string(), solution.score);
     }
 

@@ -14,6 +14,8 @@ struct Project {
     config_file: PathBuf,
     #[structopt(short, long, default_value = "")]
     solution: String,
+    #[structopt(short, long, parse(from_occurrences))]
+    verbosity: u32,
 }
 
 fn main() {
@@ -26,7 +28,12 @@ fn main() {
     // Parse CLI arguments
     let project = Project::from_args();
     // Run the actual analysis
-    if let Err(e) = run(&project.path, &project.config_file, &project.solution) {
+    if let Err(e) = run(
+        &project.path,
+        &project.config_file,
+        &project.solution,
+        project.verbosity,
+    ) {
         error!("{}", e);
         std::process::exit(1);
     }

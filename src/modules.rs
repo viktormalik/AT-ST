@@ -13,7 +13,7 @@ use wait_timeout::ChildExt;
 /// Modules are used to prepare or evaluate individual project solutions
 /// This trait is used to execute each module on a solution
 pub trait Module {
-    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError>;
+    fn execute(&self, solution: &mut Solution, verbosity: u32) -> Result<(), AtstError>;
 }
 
 /// C compiler
@@ -34,7 +34,7 @@ impl Compiler {
 }
 
 impl Module for Compiler {
-    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
+    fn execute(&self, solution: &mut Solution, _verbosity: u32) -> Result<(), AtstError> {
         let _ = remove_file(solution.path.join(&solution.obj_file));
         let _ = remove_file(solution.path.join(&solution.bin_file));
 
@@ -86,7 +86,7 @@ impl Module for Compiler {
 pub struct Parser {}
 
 impl Module for Parser {
-    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
+    fn execute(&self, solution: &mut Solution, _verbosity: u32) -> Result<(), AtstError> {
         // Run dos2unix to unify line endings and other stuff
         let _ = Command::new("dos2unix")
             .arg(solution.src_file.to_str().unwrap())
@@ -163,7 +163,7 @@ impl<'t> TestExec<'t> {
 }
 
 impl<'t> Module for TestExec<'t> {
-    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
+    fn execute(&self, solution: &mut Solution, verbosity: u32) -> Result<(), AtstError> {
         // Make sure that the executable exists
         let prog = solution.path.join(&solution.bin_file);
         if !prog.exists() {
@@ -171,6 +171,9 @@ impl<'t> Module for TestExec<'t> {
         }
 
         for test in self.tests {
+            if verbosity > 0 {
+                print!("  {}: ", test.name);
+            }
             let mut cases_passed = 0;
             for test_case in &test.test_cases {
                 // Create process with correct arguments
@@ -212,8 +215,10 @@ impl<'t> Module for TestExec<'t> {
                 TestCasesRequirement::ALL => cases_passed == test.test_cases.len(),
                 TestCasesRequirement::ANY => cases_passed >= 1,
             };
-            if test_passed {
-                solution.score += test.score;
+            let test_score = if test_passed { test.score } else { 0.0 };
+            solution.score += test_score;
+            if verbosity > 0 {
+                println!("{}", test_score);
             }
         }
         Ok(())
@@ -254,7 +259,7 @@ impl<'a> AnalysesExec<'a> {
 }
 
 impl<'a> Module for AnalysesExec<'a> {
-    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
+    fn execute(&self, solution: &mut Solution, _verbosity: u32) -> Result<(), AtstError> {
         for analysis in self.analysers {
             if analysis.analyse(solution)? {
                 solution.score += analysis.penalty();
@@ -282,7 +287,7 @@ impl Module for ScriptExec {
     /// Just run the script inside the solution directory.
     /// If the script produces a log file (expected format: <script-name>.log), read it and for all
     /// lines starting with <number>:, add <number> to the total score of the solution.
-    fn execute(&self, solution: &mut Solution) -> Result<(), AtstError> {
+    fn execute(&self, solution: &mut Solution, _verbosity: u32) -> Result<(), AtstError> {
         let script_name = self.script_path.file_name().unwrap().to_str().unwrap();
 
         let script = self.script_path.canonicalize().unwrap();
@@ -321,7 +326,7 @@ mod tests {
         let src = "int main() {}";
         let mut solution = get_solution(src, false);
 
-        let res = compiler.execute(&mut solution);
+        let res = compiler.execute(&mut solution, 0);
         assert!(res.is_ok());
 
         assert!(solution.path.join(solution.obj_file).exists());
@@ -340,7 +345,7 @@ mod tests {
         let src = "int main(int argc, char** argv) {}";
         let mut solution = get_solution(src, false);
 
-        let res = compiler.execute(&mut solution);
+        let res = compiler.execute(&mut solution, 0);
         assert!(res.is_ok());
 
         assert!(solution.path.join(solution.obj_file).exists());
@@ -360,7 +365,7 @@ mod tests {
         let src = "int main() { notype x = 0; }";
         let mut solution = get_solution(src, false);
 
-        let res = compiler.execute(&mut solution);
+        let res = compiler.execute(&mut solution, 0);
         assert!(res.is_ok());
 
         // Build targets should not exist for invalid program
@@ -382,7 +387,7 @@ int main() {
         solution.source = String::new();
         solution.included = vec![];
 
-        let res = parser.execute(&mut solution);
+        let res = parser.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.included, vec!["foo.h"]);
         assert_eq!(solution.source, "\nint x;\nint main() {\n    x = 5;\n}\n");
@@ -407,7 +412,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
     }
@@ -434,7 +439,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
     }
@@ -461,7 +466,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
     }
@@ -494,7 +499,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
     }
@@ -527,7 +532,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0);
     }
@@ -551,7 +556,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, 100);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 0.0)
     }
@@ -575,7 +580,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0)
     }
@@ -599,7 +604,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 1.0)
     }
@@ -623,7 +628,7 @@ int main() {
             true,
         );
         let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
-        let res = test_exec.execute(&mut solution);
+        let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 0.0)
     }
