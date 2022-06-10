@@ -170,6 +170,7 @@ fn tests_from_yaml(yaml: &Yaml) -> Result<Vec<Test>, ConfigError> {
                         "args",
                         "stdin",
                         "stdout",
+                        "stderr",
                         "test-cases",
                         "require",
                     ],
@@ -212,7 +213,7 @@ fn test_case_from_yaml(
     is_inner_case: bool,
 ) -> Result<TestCase, ConfigError> {
     if is_inner_case {
-        check_fields(yaml, test_name, &vec!["args", "stdin", "stdout"])?;
+        check_fields(yaml, test_name, &vec!["args", "stdin", "stdout", "stderr"])?;
     }
     Ok(TestCase {
         args: optional_field_str(yaml, test_name, "args")?
@@ -222,6 +223,7 @@ fn test_case_from_yaml(
             .collect(),
         stdin: optional_field_str(yaml, test_name, "stdin")?,
         stdout: optional_field_str(yaml, test_name, "stdout")?,
+        stderr: optional_field_str(yaml, test_name, "stderr")?,
     })
 }
 

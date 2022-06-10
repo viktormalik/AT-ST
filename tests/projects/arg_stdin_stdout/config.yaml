@@ -72,3 +72,9 @@ tests:
         stdout: |
           fi
           se
+
+  - name: too many arguments
+    score: 1.0
+    test-cases:
+      - args: "1 hello"
+        stderr: "*"
