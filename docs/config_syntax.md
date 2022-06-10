@@ -61,6 +61,11 @@ tests:
           stdout: output2
       require: all            # how many cases must pass to get the points
                               # possible values: "any", "all"
+    - name: test with shell input
+      score: 1.0
+      test-cases:
+        - stdin: $(echo err)  # passes "err" to stdin
+          stderr: "*"         # matches any string at stderr
 ```
 
 - Configuration of tests execution. Supports the following settings:
