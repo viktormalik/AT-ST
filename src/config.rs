@@ -181,6 +181,7 @@ fn tests_from_yaml(yaml: &Yaml) -> Result<Vec<Test>, ConfigError> {
                         "stderr",
                         "test-cases",
                         "require",
+                        "case-insensitive",
                     ],
                 )?;
 
@@ -221,7 +222,11 @@ fn test_case_from_yaml(
     is_inner_case: bool,
 ) -> Result<TestCase, ConfigError> {
     if is_inner_case {
-        check_fields(yaml, test_name, &vec!["args", "stdin", "stdout", "stderr"])?;
+        check_fields(
+            yaml,
+            test_name,
+            &vec!["args", "stdin", "stdout", "stderr", "case-insensitive"],
+        )?;
     }
     Ok(TestCase {
         args: optional_field_str(yaml, test_name, "args")?
@@ -232,6 +237,7 @@ fn test_case_from_yaml(
         stdin: optional_field_str(yaml, test_name, "stdin")?,
         stdout: optional_field_str(yaml, test_name, "stdout")?,
         stderr: optional_field_str(yaml, test_name, "stderr")?,
+        case_insensitive: field_bool(yaml, test_name, "case-insensitive")?,
     })
 }
 
@@ -406,6 +412,18 @@ fn mandatory_field_vec_str(
 ) -> Result<Vec<String>, ConfigError> {
     optional_field_vec_str(yaml, name, field)?
         .ok_or_else(|| make_error!(MissingField, option: name, field: field))
+}
+
+/// Parse `field` from `yaml` as a boolean.
+/// Yields `ConfigError` if the value is not a bool.
+/// Returns false if `yaml` does not contain `field`.
+fn field_bool(yaml: &Yaml, name: &str, field: &str) -> Result<bool, ConfigError> {
+    match &yaml[field] {
+        Yaml::BadValue => Ok(false),
+        val => Ok(val
+            .as_bool()
+            .ok_or(make_error!(InvalidField, option: name, field: field, expected_type: "bool"))?),
+    }
 }
 
 /// If `string` starts with '<', interpret the rest as the name of a file inside `project_path`,
@@ -638,6 +656,30 @@ mod test {
     fn parse_optional_vec_str_invalid() {
         let yaml = YamlLoader::load_from_str("option: { field: value }").unwrap();
         let err = optional_field_vec_str(&yaml[0]["option"], "option", "field");
+        assert!(err.is_err());
+        assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
+    }
+
+    #[test]
+    fn parse_bool_ok() {
+        let yaml = YamlLoader::load_from_str("option: { field: true }").unwrap();
+        let f = field_bool(&yaml[0]["option"], "option", "field");
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), true);
+    }
+
+    #[test]
+    fn parse_bool_missing() {
+        let yaml = YamlLoader::load_from_str("option: { field: true }").unwrap();
+        let f = field_bool(&yaml[0]["option"], "option", "other_field");
+        assert!(f.is_ok());
+        assert_eq!(f.unwrap(), false);
+    }
+
+    #[test]
+    fn parse_bool_err() {
+        let yaml = YamlLoader::load_from_str("option: { field: \"true\"}").unwrap();
+        let err = field_bool(&yaml[0]["option"], "option", "field");
         assert!(err.is_err());
         assert!(matches!(err.unwrap_err(), ConfigError::InvalidField { .. }));
     }

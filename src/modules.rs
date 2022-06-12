@@ -204,9 +204,15 @@ impl<'t> Module for TestExec<'t> {
                     }
                 };
 
-                if match_output(&mut cmd.stdout, &test_case.stdout)?
-                    && match_output(&mut cmd.stderr, &test_case.stderr)?
-                {
+                if match_output(
+                    &mut cmd.stdout,
+                    &test_case.stdout,
+                    test_case.case_insensitive,
+                )? && match_output(
+                    &mut cmd.stderr,
+                    &test_case.stderr,
+                    test_case.case_insensitive,
+                )? {
                     cases_passed += 1;
                 }
             }
@@ -228,6 +234,7 @@ impl<'t> Module for TestExec<'t> {
 fn match_output(
     stream: &mut Option<impl Read>,
     expected: &Option<String>,
+    case_insensitive: bool,
 ) -> Result<bool, AtstError> {
     if let Some(expected_output) = expected.as_ref() {
         let mut output = String::new();
@@ -239,9 +246,16 @@ fn match_output(
             .read_to_string(&mut output);
 
         // TODO: do not ignore whitespace
-        return Ok(match expected_output.trim() {
-            "*" => !output.trim().is_empty(),
-            o => o == output.trim(),
+        output = output.trim().to_string();
+        let mut expected = expected_output.trim().to_string();
+        if case_insensitive {
+            output = output.to_lowercase();
+            expected = expected.to_lowercase();
+        }
+
+        return Ok(match expected.as_str() {
+            "*" => !output.is_empty(),
+            o => o == output,
         });
     }
     Ok(true)
@@ -631,5 +645,30 @@ int main() {
         let res = test_exec.execute(&mut solution, 0);
         assert!(res.is_ok());
         assert_eq!(solution.score, 0.0)
+    }
+
+    #[test]
+    fn exec_test_case_insensitive() {
+        let tests = vec![Test {
+            score: 1.0,
+            test_cases: vec![TestCase {
+                stdout: Some("Hello world".to_string()),
+                case_insensitive: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        }];
+        let mut solution = get_solution(
+            r#"#include <stdio.h>
+               int main() {
+                   printf("HELLO WORLD\n");
+               }
+            "#,
+            true,
+        );
+        let test_exec = TestExec::new(&tests, DEFAULT_TEST_TIMEOUT);
+        let res = test_exec.execute(&mut solution, 0);
+        assert!(res.is_ok());
+        assert_eq!(solution.score, 1.0)
     }
 }

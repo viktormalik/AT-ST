@@ -46,6 +46,7 @@ pub struct TestCase {
     pub stdin: Option<String>,
     pub stdout: Option<String>,
     pub stderr: Option<String>,
+    pub case_insensitive: bool,
 }
 
 pub enum TestCasesRequirement {
